@@ -283,3 +283,37 @@ footer { border-top: 1px solid var(--border); padding: 22px 0 40px; color: var(-
   .status .pill.hide-sm { display: none; }
   .effect-row { grid-template-columns: 110px 1fr 60px; }
 }
+
+/* ---------- v2: idioma, crisis, código, sensibilidad */
+.lang-btn { width: auto; padding: 0 10px; font: 600 12px var(--sans); }
+html[lang="es"] .doc[data-lang="en"], html[lang="en"] .doc[data-lang="es"] { display: none; }
+.shock-desc { font-size: 12.5px; margin: 10px 0 0; min-height: 1em; }
+pre.code {
+  margin: 0; padding: 16px 18px; max-height: 560px; overflow: auto;
+  font: 12.5px/1.55 var(--mono); background: var(--surface-2); border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius) var(--radius); color: var(--text); white-space: pre;
+}
+.contract { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.contract h4 { font-size: 14px; font-family: var(--mono); }
+.contract p { font-size: 13px; color: var(--text-2); margin: 0; flex: 1; }
+.sens-row { display: grid; grid-template-columns: minmax(150px, 230px) 1fr; gap: 12px; align-items: center; margin: 9px 0; font-size: 12.5px; }
+.sens-bars { display: flex; flex-direction: column; gap: 3px; }
+.sens-bar { height: 10px; border-radius: 0 4px 4px 0; min-width: 2px; position: relative; }
+.sens-bar span { position: absolute; left: calc(100% + 6px); top: -3px; font: 11px var(--mono); color: var(--text-2); white-space: nowrap; }
+.dims-note { font-size: 12px; color: var(--muted); margin: 10px 2px 0; }
+.ok-badge { display: inline-flex; align-items: center; gap: 6px; color: var(--good); font-weight: 600; font-size: 12.5px; }
+@media (max-width: 760px) { .sens-row { grid-template-columns: 1fr; gap: 4px; } }
+@media (max-width: 1240px) {
+  .topbar-inner { flex-wrap: wrap; height: auto; padding: 10px 0 8px; row-gap: 8px; }
+  .mainnav { order: 3; width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .mainnav a { white-space: nowrap; }
+}
+.grid-2 > *, .grid-3 > *, .kpis > *, .builder > *, .slots > *, .effects > * { min-width: 0; }
+select { max-width: 100%; }
+.ctl { min-width: 0; max-width: 100%; }
+#preset { max-width: min(340px, 100%); }
+@media (max-width: 760px) {
+  .runbar > .ctl { flex: 1 1 140px; }
+  .runbar select { width: 100%; }
+  .sens-bar { max-width: 62%; }
+}

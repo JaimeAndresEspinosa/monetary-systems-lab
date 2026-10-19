@@ -2,6 +2,7 @@
 // Todos tienen tooltip al pasar el ratón y se redibujan al cambiar el ancho.
 
 const SVGNS = "http://www.w3.org/2000/svg";
+const T = (es, en) => (document.documentElement.lang === "en" ? en : es);
 const el = (tag, attrs = {}, parent) => {
   const n = document.createElementNS(SVGNS, tag);
   for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
@@ -9,12 +10,19 @@ const el = (tag, attrs = {}, parent) => {
   return n;
 };
 
+const LOC = () => (document.documentElement.lang === "en" ? "en-GB" : "es-ES");
 export const FMT = {
-  pct: (v, d = 1) => `${(v * 100).toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d })} %`,
-  pp: (v, d = 1) => `${v >= 0 ? "+" : ""}${(v * 100).toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d })} pp`,
-  idx: (v) => (v * 100).toLocaleString("es-ES", { maximumFractionDigits: 0 }),
-  dec: (v) => v.toLocaleString("es-ES", { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
-  x: (v) => v.toLocaleString("es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+  pct: (v, d = 1) => `${(v * 100).toLocaleString(LOC(), { minimumFractionDigits: d, maximumFractionDigits: d })} %`,
+  pp: (v, d = 1) => `${v >= 0 ? "+" : ""}${(v * 100).toLocaleString(LOC(), { minimumFractionDigits: d, maximumFractionDigits: d })} pp`,
+  idx: (v) => (v * 100).toLocaleString(LOC(), { maximumFractionDigits: 0 }),
+  dec: (v) => v.toLocaleString(LOC(), { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
+  x: (v) => v.toLocaleString(LOC(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+  num: (v, d = 0) => v.toLocaleString(LOC(), { maximumFractionDigits: d }),
+  big: (v) => {
+    const a = Math.abs(v);
+    const [d, u] = a >= 1e12 ? [1e12, T(" bill.", " tn")] : a >= 1e9 ? [1e9, T(" mil M", " bn")] : a >= 1e6 ? [1e6, " M"] : [1, ""];
+    return (v / d).toLocaleString(LOC(), { maximumFractionDigits: 1 }) + u;
+  },
 };
 export const fmt = (kind, v, d) => (v == null || Number.isNaN(v) ? "—" : (FMT[kind] || FMT.dec)(v, d));
 
@@ -53,7 +61,7 @@ function tooltip(node) {
  * Línea temporal con banda de incertidumbre.
  * series: [{ name, color, p10, p50, p90 }]  (meses)
  */
-export function lineChart(node, { series, kind = "dec", height = 210, ref = null, zero = false }) {
+export function lineChart(node, { series, kind = "dec", height = 210, ref = null, zero = false, xLabels = null, tipLabel = null, marker = null }) {
   responsive(node, () => {
     node.querySelector("svg")?.remove();
     const W = Math.max(280, node.clientWidth);
@@ -65,8 +73,10 @@ export function lineChart(node, { series, kind = "dec", height = 210, ref = null
     if (zero) all.push(0);
     let lo = Math.min(...all), hi = Math.max(...all);
     const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 0.01;
+    const nonNeg = lo >= 0;
     lo -= pad; hi += pad;
-    const ticks = niceTicks(lo, hi, 4);
+    if (nonNeg) lo = Math.max(0, lo);   // si los datos nunca son negativos, el eje tampoco
+    const ticks = niceTicks(lo, hi, 4).filter((v) => !nonNeg || v >= 0);
     lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks.at(-1));
     const x = (i) => m.l + (i / (n - 1)) * (W - m.l - m.r);
     const y = (v) => m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b);
@@ -78,11 +88,22 @@ export function lineChart(node, { series, kind = "dec", height = 210, ref = null
       el("line", { x1: m.l, x2: W - m.r, y1: y(tv), y2: y(tv), class: "gridline" }, g);
       el("text", { x: m.l - 8, y: y(tv) + 4, "text-anchor": "end" }, g).textContent = fmt(kind, tv, kind === "pct" ? 0 : undefined);
     }
-    const years = Math.round(n / 12);
-    const everyY = years > 12 ? 4 : years > 6 ? 2 : 1;
-    for (let yr = 0; yr <= years; yr += everyY) {
-      const i = Math.min(n - 1, yr * 12);
-      el("text", { x: x(i), y: H - 6, "text-anchor": yr === 0 ? "start" : "middle" }, g).textContent = yr === 0 ? "Inicio" : `Año ${yr}`;
+    if (xLabels) {
+      const every = Math.max(1, Math.ceil(n / Math.max(3, Math.floor((W - m.l) / 70))));
+      for (let i = 0; i < n; i += every) {
+        el("text", { x: x(i), y: H - 6, "text-anchor": i === 0 ? "start" : "middle" }, g).textContent = xLabels[i];
+      }
+    } else {
+      const years = Math.round(n / 12);
+      const everyY = years > 12 ? 4 : years > 6 ? 2 : 1;
+      for (let yr = 0; yr <= years; yr += everyY) {
+        const i = Math.min(n - 1, yr * 12);
+        el("text", { x: x(i), y: H - 6, "text-anchor": yr === 0 ? "start" : "middle" }, g).textContent = yr === 0 ? T("Inicio", "Start") : `${T("Año", "Year")} ${yr}`;
+      }
+    }
+    if (marker != null && marker >= 0 && marker < n) {
+      el("line", { x1: x(marker), x2: x(marker), y1: m.t, y2: H - m.b, class: "ref" }, svg);
+      el("text", { x: x(marker) + 4, y: m.t + 10 }, svg).textContent = T("Hoy", "Today");
     }
     if (zero && lo < 0 && hi > 0) el("line", { x1: m.l, x2: W - m.r, y1: y(0), y2: y(0), class: "zero" }, svg);
     if (ref != null) el("line", { x1: m.l, x2: W - m.r, y1: y(ref), y2: y(ref), class: "ref" }, svg);
@@ -98,7 +119,8 @@ export function lineChart(node, { series, kind = "dec", height = 210, ref = null
     for (const s of series) {
       let d = "";
       s.p50.forEach((v, i) => (d += `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`));
-      el("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+      el("path", { d, fill: "none", stroke: s.color, "stroke-width": s.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round",
+                   ...(s.dash ? { "stroke-dasharray": s.dash } : {}) }, svg);
     }
 
     // capa interactiva
@@ -113,9 +135,10 @@ export function lineChart(node, { series, kind = "dec", height = 210, ref = null
       cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
       series.forEach((s, k) => { dots[k].setAttribute("cx", x(i)); dots[k].setAttribute("cy", y(s.p50[i])); dots[k].setAttribute("visibility", "visible"); });
       const yr = Math.floor(i / 12), mo = (i % 12) + 1;
-      tip.innerHTML = `<div class="th">Año ${yr + 1} · mes ${mo}</div>` + series.map((s) =>
+      const head = tipLabel ? tipLabel(i) : xLabels ? xLabels[i] : `${T("Año", "Year")} ${yr + 1} · ${T("mes", "month")} ${mo}`;
+      tip.innerHTML = `<div class="th">${head}</div>` + series.map((s) =>
         `<div class="tr"><span><i class="sw" style="background:${s.color}"></i>${s.name}</span><b>${fmt(kind, s.p50[i])}</b></div>` +
-        (s.p10 ? `<div class="tr muted"><span>banda 10–90 %</span><span>${fmt(kind, s.p10[i])} – ${fmt(kind, s.p90[i])}</span></div>` : "")
+        (s.p10 ? `<div class="tr muted"><span>${T("banda 10–90 %", "10–90 % band")}</span><span>${fmt(kind, s.p10[i])} – ${fmt(kind, s.p90[i])}</span></div>` : "")
       ).join("");
       tip.hidden = false;
       const left = (x(i) / W) * r.width;
@@ -158,8 +181,8 @@ export function divergingBars(node, { labels, values, kind = "pp", height = 220,
       el("text", { x: x0 + w / 2, y: H - 10, "text-anchor": "middle" }, svg).textContent = labels[i];
       const hit = el("rect", { x: m.l + i * bw, y: m.t, width: bw, height: H - m.t - m.b, fill: "transparent" }, svg);
       hit.addEventListener("pointermove", () => {
-        tip.innerHTML = `<div class="th">${extra?.names?.[i] || labels[i]}</div><div class="tr"><span>Variación</span><b>${fmt(kind, v, 2)}</b></div>` +
-          (extra ? `<div class="tr"><span>Cuota inicial</span><b>${fmt("pct", extra.start[i])}</b></div><div class="tr"><span>Cuota final</span><b>${fmt("pct", extra.end[i])}</b></div>` : "");
+        tip.innerHTML = `<div class="th">${extra?.names?.[i] || labels[i]}</div><div class="tr"><span>${T("Variación", "Change")}</span><b>${fmt(kind, v, 2)}</b></div>` +
+          (extra ? `<div class="tr"><span>${T("Cuota inicial", "Initial share")}</span><b>${fmt("pct", extra.start[i])}</b></div><div class="tr"><span>${T("Cuota final", "Final share")}</span><b>${fmt("pct", extra.end[i])}</b></div>` : "");
         tip.hidden = false;
         const rr = svg.getBoundingClientRect();
         tip.style.left = `${Math.max(90, Math.min(rr.width - 90, ((x0 + w / 2) / W) * rr.width))}px`;

@@ -1,0 +1,7 @@
+# Opcional: compilar, probar y desplegar los contratos de contracts/
+-r requirements.txt
+py-solc-x>=2.0
+web3>=7
+py-evm==0.12.1b1
+eth-tester==0.13.0b1
+certifi

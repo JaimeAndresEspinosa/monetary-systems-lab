@@ -31,6 +31,7 @@ INSTRUMENTS = {
     "treasury": "Cuenta del Tesoro",
     "bonds": "Bonos del Estado",
     "cb_loans": "Préstamos del banco central",
+    "cbdc": "Euro digital (CBDC)",
 }
 
 
@@ -42,7 +43,7 @@ class Economy:
         self.inv = np.zeros(n)
         self.bonds = np.zeros(n)
         self.loan = np.zeros(n)
-        # Empresas (sector agregado)
+        self.cbdc = np.zeros(n)         # dinero digital del banco central en manos de hogares (sector agregado)
         self.firm_dep = 0.0
         self.firm_loan = 0.0
         # Bancos (sector agregado)
@@ -60,6 +61,7 @@ class Economy:
         self.cb_loan_asset = 0.0
         self.cb_res_liab = 0.0
         self.cb_acct_liab = 0.0
+        self.cb_cbdc_liab = 0.0
         self.cb_issued = 0.0  # dinero base creado sin activo de contrapartida (señoreaje)
         # Flujos del mes: (origen, destino, concepto) -> importe
         self.flows: dict[tuple[str, str, str], float] = defaultdict(float)
@@ -145,6 +147,11 @@ class Economy:
         self.bank_dep_liab -= x
         self.flows[("firm", "bank", "Amortización de préstamos")] += x
 
+    def write_off_firm(self, x: float):
+        """Impago de empresas: el banco pierde el préstamo, la empresa deja de deberlo."""
+        self.firm_loan -= x
+        self.bank_loans -= x
+
     def write_off_hh(self, i: int) -> float:
         """Impago: el banco da de baja el préstamo (pérdida para su patrimonio)."""
         x = float(self.loan[i])
@@ -222,6 +229,53 @@ class Economy:
         self.cb_res_liab -= x
         self.flows[("bank", "cb", "Devolución de liquidez")] += x
 
+    # ------------------------------------------------------------ CBDC
+    def to_cbdc(self, vec: np.ndarray):
+        """El hogar pasa depósitos a euro digital: el banco pierde depósitos y reservas."""
+        s = float(vec.sum())
+        self.dep -= vec
+        self.bank_dep_liab -= s
+        self.bank_res -= s
+        self.cb_res_liab -= s
+        self.cbdc += vec
+        self.cb_cbdc_liab += s
+        self.flows[("hh", "cb", "Paso a euro digital")] += s
+
+    def from_cbdc(self, vec: np.ndarray):
+        s = float(vec.sum())
+        self.cbdc -= vec
+        self.cb_cbdc_liab -= s
+        self.dep += vec
+        self.bank_dep_liab += s
+        self.bank_res += s
+        self.cb_res_liab += s
+        self.flows[("cb", "hh", "Vuelta a depósitos")] += s
+
+    def cb_issue_cbdc(self, vec: np.ndarray):
+        """Dinero nuevo directamente en euro digital (sin pasar por los bancos)."""
+        s = float(vec.sum())
+        self.cbdc += vec
+        self.cb_cbdc_liab += s
+        self.cb_issued += s
+        self.flows[("cb", "hh", "Dinero nuevo (euro digital)")] += s
+
+    def expire_cbdc(self, vec: np.ndarray):
+        """Dinero programable que caduca sin gastarse: vuelve al banco central."""
+        s = float(vec.sum())
+        self.cbdc -= vec
+        self.cb_cbdc_liab -= s
+        self.cb_issued -= s
+        self.flows[("hh", "cb", "Caducidad del dinero programable")] += s
+
+    def hh_buy_bank_bonds(self, vec: np.ndarray):
+        """Mercado secundario: los hogares compran a los bancos bonos ya emitidos."""
+        s = float(vec.sum())
+        self.dep -= vec
+        self.bank_dep_liab -= s
+        self.bank_bonds -= s
+        self.bonds += vec
+        self.flows[("hh", "bank", "Compra de bonos a los bancos")] += s
+
     # ------------------------------------------------------- agregados
     @property
     def deposits(self) -> float:
@@ -244,6 +298,7 @@ class Economy:
             "bonds": {"hh": float(self.bonds.sum()), "bank": self.bank_bonds,
                       "cb": self.cb_bonds, "gov": -self.gov_bonds_liab},
             "cb_loans": {"bank": -self.bank_cb_loan, "cb": self.cb_loan_asset},
+            "cbdc": {"hh": float(self.cbdc.sum()), "cb": -self.cb_cbdc_liab},
         }
 
     def check(self) -> float:

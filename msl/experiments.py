@@ -54,17 +54,19 @@ def _grid_cell(args):
     regime_key, params, seeds = args
     r = Regime.from_key(regime_key)
     res = monte_carlo(r, params, seeds)
-    return {"key": r.key, "label": r.label, "issuance": r.issuance, "channel": r.channel,
-            "banking": r.banking, "summary": res["summary"],
-            "wealth_share_start": res["wealth_share_start"],
-            "wealth_share_end": res["wealth_share_end"],
+    # versión compacta: el explorador solo necesita la mediana
+    return {"key": r.key, **r.__dict__,
+            "summary": {k: round(v["p50"], 6) for k, v in res["summary"].items()},
+            "wealth_share_start": [round(x, 5) for x in res["wealth_share_start"]],
+            "wealth_share_end": [round(x, 5) for x in res["wealth_share_end"]],
             "sfc_max_error": res["sfc_max_error"]}
 
 
-def grid(params: Params, seeds: int = 8, workers: int | None = None) -> list[dict]:
+def grid(params: Params, seeds: int = 8, workers: int | None = None,
+         regimes: list[Regime] | None = None) -> list[dict]:
     """Simula todas las combinaciones de piezas del régimen monetario."""
-    jobs = [(r.key, params, seeds) for r in Regime.all()]
+    jobs = [(r.key, params, seeds) for r in (regimes or Regime.all())]
     if workers == 1:
         return [_grid_cell(j) for j in jobs]
     with ProcessPoolExecutor(max_workers=workers) as ex:
-        return list(ex.map(_grid_cell, jobs))
+        return list(ex.map(_grid_cell, jobs, chunksize=4))

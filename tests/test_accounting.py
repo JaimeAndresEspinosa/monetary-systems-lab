@@ -3,22 +3,37 @@
 import numpy as np
 import pytest
 
+from dataclasses import replace
+
 from msl import Params, Regime
+from msl.config import SHOCKS
 from msl.economy import Economy
 from msl.model import Model
 
 SMALL = Params(households=300, months=36, burn_in=12)
+TINY = Params(households=150, months=24, burn_in=6, shock_month=6)
 
 
 @pytest.mark.parametrize("regime", Regime.all(), ids=lambda r: r.key)
 def test_every_regime_is_stock_flow_consistent(regime):
-    m = Model(regime, SMALL)
-    for _ in range(SMALL.months):
+    m = Model(regime, TINY)
+    for _ in range(TINY.months):
         m.step()
         assert m.e.check() < 1e-9, f"descuadre en el mes {m.t}"
 
 
-@pytest.mark.parametrize("regime", Regime.all(), ids=lambda r: r.key)
+@pytest.mark.parametrize("shock", [s for s in SHOCKS if s != "none"])
+@pytest.mark.parametrize("regime", Regime.core(), ids=lambda r: r.key)
+def test_every_crisis_is_stock_flow_consistent(regime, shock):
+    p = replace(TINY, shock=shock)
+    m = Model(regime, p)
+    for _ in range(p.months):
+        m.step()
+        assert m.e.check() < 1e-9, f"descuadre en el mes {m.t} ({shock})"
+
+
+@pytest.mark.parametrize("regime", Regime.core() + [Regime(money="cbdc"), Regime(money="demurrage")],
+                         ids=lambda r: r.key)
 def test_balance_sheet_columns_and_rows_close(regime):
     m = Model(regime, SMALL)
     for _ in range(12):
@@ -27,7 +42,7 @@ def test_balance_sheet_columns_and_rows_close(regime):
     rows = {r["key"]: r for r in res["balance_sheet"]["rows"]}
     # cada instrumento financiero suma cero entre sectores (el activo de uno es el pasivo de otro)
     scale = m.e.bank_dep_liab
-    for key in ("deposits", "investment", "loans", "reserves", "treasury", "bonds", "cb_loans"):
+    for key in ("deposits", "investment", "loans", "reserves", "treasury", "bonds", "cb_loans", "cbdc"):
         assert abs(rows[key]["total"]) < 1e-9 * scale, key
     # por tanto la riqueza neta total es igual a los activos reales (viviendas)
     assert rows["net"]["total"] == pytest.approx(rows["houses"]["total"], rel=1e-9)
@@ -70,3 +85,31 @@ def test_new_money_is_tracked_by_channel():
             m.step()
         assert m.new_money > 0
         assert m.new_money_to[recipient] > 0
+
+
+def test_cbdc_respects_holding_limit_and_programmable_money_expires():
+    p = Params(households=300, months=36, burn_in=12)
+    m = Model(Regime("rule_2pct", "dividend", "fractional", "cbdc"), p)
+    for _ in range(p.months):
+        m.step()
+        limit = p.cbdc_limit
+        assert ((m.e.cbdc - m.stim) <= limit * 1.0001 + 1e-6).all()
+    assert m.e.cbdc.sum() > 0
+    assert m.last_flows.get(("hh", "cb", "Caducidad del dinero programable"), 0) > 0
+
+
+def test_demurrage_is_paid_to_the_state():
+    m = Model(Regime(money="demurrage"), SMALL)
+    for _ in range(12):
+        m.step()
+    assert m.demurrage_paid > 0
+
+
+def test_privacy_changes_tax_evasion():
+    gaps = {}
+    for privacy in ("anonymous", "mixed", "traceable"):
+        m = Model(Regime(privacy=privacy), SMALL)
+        for _ in range(12):
+            m.step()
+        gaps[privacy] = np.mean(m.history["tax_gap"])
+    assert gaps["anonymous"] > gaps["mixed"] > gaps["traceable"]

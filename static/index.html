@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Monetary Systems Lab</title>
-<meta name="description" content="Simulador de sistemas monetarios: combina reglas de emisión, canales del dinero nuevo y sistemas bancarios, y mide su efecto sobre inflación, empleo, vivienda y desigualdad con una economía de agentes stock-flujo consistente.">
+<meta name="description" content="Simulador de sistemas monetarios: 576 combinaciones de reglas de emisión, canales del dinero nuevo, banca, propiedades del dinero, privacidad y regla fiscal, en una economía de agentes stock-flujo consistente calibrada con datos de España y con las reglas implementadas como smart contracts.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23101828'/><circle cx='16' cy='16' r='8.5' fill='none' stroke='%236e9bff' stroke-width='2.6'/><path d='M16 10.5v11M12.8 13.2h4.6a2.3 2.3 0 0 1 0 4.6h-4.6' stroke='%236e9bff' stroke-width='2.2' fill='none' stroke-linecap='round'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,7 +12,8 @@
 <link rel="stylesheet" href="/static/style.css">
 <script>
   try { const t = localStorage.getItem("msl-theme"); if (t) document.documentElement.dataset.theme = t;
-        else if (matchMedia("(prefers-color-scheme: dark)").matches) document.documentElement.dataset.theme = "dark"; } catch (e) {}
+        else if (matchMedia("(prefers-color-scheme: dark)").matches) document.documentElement.dataset.theme = "dark";
+        const l = localStorage.getItem("msl-lang"); if (l) document.documentElement.lang = l; } catch (e) {}
 </script>
 </head>
 <body>
@@ -20,17 +21,21 @@
   <div class="wrap topbar-inner">
     <a class="brand" href="#lab">
       <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--brand-bg)"/><circle cx="16" cy="16" r="8.5" fill="none" stroke="#6e9bff" stroke-width="2.6"/><path d="M16 10.5v11M12.8 13.2h4.6a2.3 2.3 0 0 1 0 4.6h-4.6" stroke="#6e9bff" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>
-      <span><strong>Monetary Systems Lab</strong><small>Simulador de sistemas monetarios</small></span>
+      <span><strong>Monetary Systems Lab</strong><small data-i18n="brand.sub">Simulador de sistemas monetarios</small></span>
     </a>
     <nav class="mainnav" aria-label="Secciones">
-      <a href="#lab" data-view="lab" class="active">Laboratorio</a>
-      <a href="#compare" data-view="compare">Comparar</a>
-      <a href="#explore" data-view="explore">Explorador</a>
-      <a href="#method" data-view="method">Metodología</a>
+      <a href="#lab" data-view="lab" class="active" data-i18n="nav.lab">Laboratorio</a>
+      <a href="#compare" data-view="compare" data-i18n="nav.compare">Comparar</a>
+      <a href="#explore" data-view="explore" data-i18n="nav.explore">Explorador</a>
+      <a href="#sensitivity" data-view="sensitivity" data-i18n="nav.sens">Sensibilidad</a>
+      <a href="#data" data-view="data" data-i18n="nav.data">Datos reales</a>
+      <a href="#chain" data-view="chain" data-i18n="nav.chain">Blockchain</a>
+      <a href="#method" data-view="method" data-i18n="nav.method">Metodología</a>
     </nav>
     <div class="status">
-      <span class="pill hide-sm" id="sfc-pill" title="Comprobación de doble entrada en cada mes simulado"><i></i><span>Contabilidad</span></span>
+      <span class="pill hide-sm" id="sfc-pill"><i></i><span data-i18n="pill.sfc">Contabilidad</span></span>
       <span class="pill" id="run-pill"><i></i><span id="run-text">Listo</span></span>
+      <button class="icon-btn lang-btn" id="lang-btn" title="Español / English" aria-label="Idioma">EN</button>
       <button class="icon-btn" id="theme-btn" title="Cambiar tema" aria-label="Cambiar tema">
         <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" fill="currentColor"/></svg>
       </button>
@@ -43,19 +48,29 @@
   <!-- ============================================================ LABORATORIO -->
   <section id="view-lab" class="view active">
     <div class="hero">
-      <div class="eyebrow">Laboratorio</div>
-      <h1>Diseña las reglas del dinero y mira qué le pasa a la economía</h1>
-      <p>Un país virtual de miles de hogares, empresas, bancos, Estado y banco central, con contabilidad de doble entrada completa. Elige una pieza de cada columna: cualquier combinación es un sistema monetario distinto.</p>
+      <div class="eyebrow" data-i18n="nav.lab">Laboratorio</div>
+      <h1 data-i18n="lab.title">Diseña las reglas del dinero y mira qué le pasa a la economía</h1>
+      <p data-i18n="lab.lead">Un país virtual de miles de hogares, empresas, bancos, Estado y banco central, con contabilidad de doble entrada completa y calibrado con datos de España. Elige una pieza de cada columna: hay 576 sistemas monetarios distintos.</p>
     </div>
 
     <div class="builder" id="builder"></div>
 
     <div class="card card-pad" style="margin-top:14px">
       <div class="runbar">
-        <label class="ctl">Sistemas conocidos
+        <label class="ctl"><span data-i18n="ctl.preset">Sistemas conocidos</span>
           <select id="preset"></select>
         </label>
-        <label class="ctl">Horizonte
+        <label class="ctl"><span data-i18n="ctl.shock">Crisis</span>
+          <select id="p-shock"></select>
+        </label>
+        <label class="ctl"><span data-i18n="ctl.shockyear">Llega en</span>
+          <select id="p-shock-month">
+            <option value="12">Año 2</option>
+            <option value="24" selected>Año 3</option>
+            <option value="48">Año 5</option>
+          </select>
+        </label>
+        <label class="ctl"><span data-i18n="ctl.horizon">Horizonte</span>
           <select id="p-months">
             <option value="60">5 años</option>
             <option value="120" selected>10 años</option>
@@ -63,14 +78,14 @@
             <option value="240">20 años</option>
           </select>
         </label>
-        <label class="ctl">Hogares
+        <label class="ctl"><span data-i18n="ctl.households">Hogares</span>
           <select id="p-households">
             <option value="1000">1.000</option>
             <option value="2000" selected>2.000</option>
             <option value="4000">4.000</option>
           </select>
         </label>
-        <label class="ctl" title="Cuántas veces se repite la simulación con distinta aleatoriedad">Simulaciones
+        <label class="ctl"><span data-i18n="ctl.seeds">Simulaciones</span>
           <select id="p-seeds">
             <option value="4">4</option>
             <option value="8" selected>8</option>
@@ -81,27 +96,26 @@
         <span class="spacer"></span>
         <button class="btn primary" id="run-btn">
           <svg viewBox="0 0 24 24" width="15" height="15"><path d="M7 4v16l13-8z" fill="currentColor"/></svg>
-          Simular
+          <span data-i18n="btn.run">Simular</span>
         </button>
       </div>
+      <p class="shock-desc t2" id="shock-desc"></p>
       <details class="adv">
-        <summary>Parámetros de la economía</summary>
+        <summary data-i18n="adv.summary">Parámetros de la economía</summary>
         <div class="adv-grid" id="adv"></div>
-        <p class="muted" style="font-size:12px;margin-top:10px">Los valores por defecto son la calibración base (ver Metodología). Cambiarlos sirve para análisis de sensibilidad.</p>
+        <p class="muted" style="font-size:12px;margin-top:10px" data-i18n="adv.note">Los valores por defecto son la calibración con datos de España (ver Datos reales). Cambiarlos sirve para análisis de sensibilidad.</p>
       </details>
       <div class="runinfo" id="runinfo"></div>
     </div>
 
     <div id="lab-results" hidden>
-      <div class="section">
-        <div class="kpis" id="kpis"></div>
-      </div>
+      <div class="section"><div class="kpis" id="kpis"></div></div>
 
       <div class="section">
         <div class="section-head">
           <div>
-            <h2>Evolución</h2>
-            <p>Línea: mediana de las simulaciones. Banda: entre el percentil 10 y el 90, es decir, el rango de resultados razonables por azar.</p>
+            <h2 data-i18n="lab.evo">Evolución</h2>
+            <p data-i18n="lab.evo.sub">Línea: mediana de las simulaciones. Banda: entre el percentil 10 y el 90, es decir, el rango de resultados razonables por azar.</p>
           </div>
           <div class="seg" id="group-tabs"></div>
         </div>
@@ -111,22 +125,22 @@
       <div class="section">
         <div class="section-head">
           <div>
-            <h2>¿Quién gana y quién pierde?</h2>
-            <p>Variación de la cuota de la riqueza total de cada decil (los mismos hogares, ordenados por su riqueza al inicio). El efecto Cantillon aparece aquí: quien recibe primero el dinero nuevo o posee los activos que suben gana cuota.</p>
+            <h2 data-i18n="lab.who">¿Quién gana y quién pierde?</h2>
+            <p data-i18n="lab.who.sub">Variación de la cuota de la riqueza total de cada decil (los mismos hogares, ordenados por su riqueza al inicio). El efecto Cantillon aparece aquí: quien recibe primero el dinero nuevo o posee los activos que suben gana cuota.</p>
           </div>
         </div>
         <div class="grid-2">
           <div class="card chart-card">
-            <h4>Variación de la cuota de riqueza por decil</h4>
-            <div class="sub">D1 = 10 % más pobre al inicio · D10 = 10 % más rico</div>
+            <h4 data-i18n="lab.dec.title">Variación de la cuota de riqueza por decil</h4>
+            <div class="sub" data-i18n="lab.dec.sub">D1 = 10 % más pobre al inicio · D10 = 10 % más rico</div>
             <div class="chart" id="decile-chart"></div>
-            <div class="legend"><span><i style="background:var(--pos)"></i>Gana cuota</span><span><i style="background:var(--neg)"></i>Pierde cuota</span></div>
+            <div class="legend"><span><i style="background:var(--pos)"></i><span data-i18n="lg.gain">Gana cuota</span></span><span><i style="background:var(--neg)"></i><span data-i18n="lg.lose">Pierde cuota</span></span></div>
           </div>
           <div class="card chart-card">
-            <h4>¿Por dónde entra el dinero nuevo?</h4>
-            <div class="sub">Primer receptor del dinero base creado durante la simulación</div>
+            <h4 data-i18n="lab.nm.title">¿Por dónde entra el dinero nuevo?</h4>
+            <div class="sub" data-i18n="lab.nm.sub">Primer receptor del dinero base creado durante la simulación</div>
             <div id="newmoney-sectors" style="margin-top:14px"></div>
-            <h4 style="margin-top:18px" id="newmoney-dec-title">Hogares que lo reciben directamente, por decil de riqueza</h4>
+            <h4 style="margin-top:18px" id="newmoney-dec-title" data-i18n="lab.nm.dec">Hogares que lo reciben directamente, por decil de riqueza</h4>
             <div class="chart" id="newmoney-deciles"></div>
           </div>
         </div>
@@ -135,41 +149,40 @@
       <div class="section">
         <div class="section-head">
           <div>
-            <h2>Contabilidad</h2>
-            <p>Balance de todos los sectores en el último mes (primera simulación). Cada fila financiera suma cero: el activo de un sector es el pasivo de otro. El patrimonio neto total es igual a los activos reales.</p>
+            <h2 data-i18n="lab.acct">Contabilidad</h2>
+            <p data-i18n="lab.acct.sub">Balance de todos los sectores en el último mes (primera simulación). Cada fila financiera suma cero: el activo de un sector es el pasivo de otro. El patrimonio neto total es igual a los activos reales.</p>
           </div>
           <div class="seg" id="acct-tabs">
-            <button data-t="bs" class="on">Balances</button>
-            <button data-t="flows">Flujos del mes</button>
+            <button data-t="bs" class="on" data-i18n="acct.bs">Balances</button>
+            <button data-t="flows" data-i18n="acct.flows">Flujos del mes</button>
           </div>
         </div>
         <div class="card table-wrap" id="acct"></div>
         <div class="card card-pad" id="events-card" style="margin-top:14px" hidden>
-          <h4 style="margin-bottom:8px">Acontecimientos</h4>
+          <h4 style="margin-bottom:8px" data-i18n="lab.events">Acontecimientos</h4>
           <div class="events" id="events"></div>
         </div>
       </div>
     </div>
-    <div class="card empty" id="lab-empty">Elige un sistema y pulsa <b>Simular</b>.</div>
+    <div class="card empty" id="lab-empty" data-i18n-html="lab.empty">Elige un sistema y pulsa <b>Simular</b>.</div>
   </section>
 
   <!-- ============================================================ COMPARAR -->
   <section id="view-compare" class="view">
     <div class="hero">
-      <div class="eyebrow">Comparar</div>
-      <h1>Hasta tres sistemas, cara a cara</h1>
-      <p>Misma economía de partida, mismas semillas aleatorias: la única diferencia son las reglas del dinero.</p>
+      <div class="eyebrow" data-i18n="nav.compare">Comparar</div>
+      <h1 data-i18n="cmp.title">Hasta tres sistemas, cara a cara</h1>
+      <p data-i18n="cmp.lead">Misma economía de partida, mismas semillas aleatorias y la misma crisis: la única diferencia son las reglas del dinero.</p>
     </div>
     <div class="slots" id="slots"></div>
     <div class="runbar">
+      <label class="ctl"><span data-i18n="ctl.shock">Crisis</span><select id="cmp-shock"></select></label>
       <span class="spacer"></span>
-      <button class="btn primary" id="cmp-btn">Comparar</button>
+      <button class="btn primary" id="cmp-btn" data-i18n="btn.compare">Comparar</button>
     </div>
     <div id="cmp-results" hidden>
       <div class="section">
-        <div class="section-head">
-          <div><h2>Trayectorias</h2><p>Elige la variable.</p></div>
-        </div>
+        <div class="section-head"><div><h2 data-i18n="cmp.paths">Trayectorias</h2><p data-i18n="cmp.paths.sub">Elige la variable.</p></div></div>
         <div class="chips" id="cmp-metrics"></div>
         <div class="card chart-card" style="margin-top:12px">
           <h4 id="cmp-title"></h4>
@@ -178,7 +191,7 @@
         </div>
       </div>
       <div class="section">
-        <div class="section-head"><div><h2>Resumen</h2><p>Mediana de las simulaciones; entre paréntesis, rango 10–90 %.</p></div></div>
+        <div class="section-head"><div><h2 data-i18n="cmp.summary">Resumen</h2><p data-i18n="cmp.summary.sub">Mediana de las simulaciones; entre paréntesis, rango 10–90 %. En verde, el mejor de los tres.</p></div></div>
         <div class="card table-wrap" id="cmp-table"></div>
       </div>
     </div>
@@ -187,69 +200,170 @@
   <!-- ============================================================ EXPLORADOR -->
   <section id="view-explore" class="view">
     <div class="hero">
-      <div class="eyebrow">Explorador</div>
-      <h1>Todas las combinaciones, sin dejar ninguna fuera</h1>
-      <p id="explore-sub">Cada fila es un sistema monetario distinto simulado muchas veces. Ordena por cualquier columna o pulsa una fila para abrirla en el laboratorio.</p>
+      <div class="eyebrow" data-i18n="nav.explore">Explorador</div>
+      <h1 data-i18n="exp.title">Todas las combinaciones, sin dejar ninguna fuera</h1>
+      <p id="explore-sub"></p>
+    </div>
+    <div class="runbar" style="margin-top:0">
+      <label class="ctl"><span data-i18n="ctl.scenario">Escenario</span><select id="exp-scenario"></select></label>
     </div>
     <div class="section">
       <div class="section-head">
         <div>
-          <h2>Efecto de cada pieza</h2>
-          <p>Cuánto mueve cada opción la variable elegida respecto a la media de todas las combinaciones (efecto principal). Separa qué parte del resultado se debe a la regla de emisión, al canal o al sistema bancario.</p>
+          <h2 data-i18n="exp.effects">Efecto de cada pieza</h2>
+          <p data-i18n="exp.effects.sub">Cuánto mueve cada opción la variable elegida respecto a la media de todas las combinaciones (efecto principal). Separa qué parte del resultado se debe a cada dimensión del sistema monetario.</p>
         </div>
-        <label class="ctl">Variable
-          <select id="effect-metric"></select>
-        </label>
+        <label class="ctl"><span data-i18n="ctl.variable">Variable</span><select id="effect-metric"></select></label>
       </div>
       <div class="effects" id="effects"></div>
     </div>
     <div class="section">
       <div class="section-head">
-        <div><h2>Las combinaciones</h2><p>Color: mejor o peor que el sistema actual en esa variable.</p></div>
+        <div><h2 data-i18n="exp.table">Las combinaciones</h2><p data-i18n="exp.table.sub">Color: mejor o peor que el sistema actual en esa variable. Pulsa una fila para abrirla en el laboratorio.</p></div>
         <div class="filters" id="explore-filters"></div>
       </div>
       <div class="card table-wrap" id="explore-table"></div>
+      <div class="runbar"><span class="muted" id="explore-count"></span><span class="spacer"></span><button class="btn small" id="explore-more" data-i18n="btn.more">Mostrar todas</button></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ SENSIBILIDAD -->
+  <section id="view-sensitivity" class="view">
+    <div class="hero">
+      <div class="eyebrow" data-i18n="nav.sens">Sensibilidad</div>
+      <h1 data-i18n="sens.title">¿Qué supuestos mueven de verdad los resultados?</h1>
+      <p data-i18n="sens.lead">Análisis de sensibilidad global con índices de Sobol: se varían a la vez ocho parámetros inciertos dentro de rangos plausibles y se descompone la varianza de cada resultado. Si una conclusión depende de un supuesto discutible, aquí se ve.</p>
+    </div>
+    <div class="runbar" style="margin-top:0">
+      <label class="ctl"><span data-i18n="ctl.system">Sistema</span><select id="sens-regime"></select></label>
+      <label class="ctl"><span data-i18n="ctl.result">Resultado</span><select id="sens-output"></select></label>
+    </div>
+    <div class="grid-2 section">
+      <div class="card chart-card">
+        <h4 id="sens-chart-title"></h4>
+        <div class="sub" data-i18n="sens.chart.sub">Parte de la varianza no aleatoria en la que interviene cada supuesto, con sus interacciones</div>
+        <div id="sens-bars" style="margin-top:12px"></div>
+        <div class="legend"><span><i style="background:var(--muted)"></i><span data-i18n="sens.noise">Azar de la simulación</span></span><span><i style="background:var(--s2)"></i><span data-i18n="sens.st">ST: efecto total del supuesto</span></span></div>
+      </div>
+      <div class="card card-pad">
+        <h4 data-i18n="sens.read">Cómo leerlo</h4>
+        <div id="sens-text" class="t2" style="font-size:13.5px;margin-top:8px"></div>
+        <div class="table-wrap" style="margin-top:12px" id="sens-table"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ DATOS REALES -->
+  <section id="view-data" class="view">
+    <div class="hero">
+      <div class="eyebrow" data-i18n="nav.data">Datos reales</div>
+      <h1 data-i18n="data.title">Calibrado y validado con datos de España</h1>
+      <p data-i18n="data.lead">Los parámetros del sistema actual se han calibrado por el método de los momentos simulados (SMM) para reproducir los datos de Eurostat y de las Cuentas Distribucionales de Riqueza del BCE. Aquí está la comparación completa, también lo que el modelo todavía no reproduce bien.</p>
+    </div>
+    <div class="kpis section" id="data-kpis"></div>
+    <div class="grid-2 section">
+      <div class="card table-wrap">
+        <div class="card-pad" style="padding-bottom:0"><h4 data-i18n="data.moments">Momentos: España frente al modelo</h4><div class="sub muted" id="data-window"></div></div>
+        <div id="moments-table"></div>
+      </div>
+      <div class="card table-wrap">
+        <div class="card-pad" style="padding-bottom:0"><h4 data-i18n="data.stylized">Hechos estilizados</h4><div class="sub muted" data-i18n="data.stylized.sub">Relaciones que el modelo no impone y debería reproducir por sí solo</div></div>
+        <div id="stylized-table"></div>
+        <div class="card-pad"><h4 style="font-size:13px" data-i18n="data.params">Parámetros calibrados</h4><div id="params-table" class="table-wrap"></div></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-head"><div><h2 data-i18n="data.series">Las series de España</h2><p id="data-sources"></p></div></div>
+      <div class="grid-2" id="spain-charts"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ BLOCKCHAIN -->
+  <section id="view-chain" class="view">
+    <div class="hero">
+      <div class="eyebrow" data-i18n="nav.chain">Blockchain</div>
+      <h1 data-i18n="chain.title">Las reglas del dinero, escritas como smart contracts</h1>
+      <p data-i18n="chain.lead">Cada regla del simulador está implementada en Solidity y probada en una cadena Ethereum. La regla de oferta fija se calibra con los datos reales de Bitcoin, y las stablecoins muestran qué dinero digital privado existe ya.</p>
+    </div>
+    <div class="kpis section" id="chain-kpis"></div>
+    <div class="grid-2 section">
+      <div class="card chart-card">
+        <h4 data-i18n="chain.btc">Bitcoin: oferta según el protocolo</h4>
+        <div class="sub" id="btc-sub"></div>
+        <div class="chart" id="btc-chart"></div>
+      </div>
+      <div class="card chart-card">
+        <h4 data-i18n="chain.stables">Stablecoins en circulación</h4>
+        <div class="sub" id="stable-sub"></div>
+        <div class="chart" id="stable-chart"></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-head">
+        <div><h2 data-i18n="chain.same">El contrato y el modelo dan lo mismo</h2>
+          <p data-i18n="chain.same.sub">La misma regla ejecutada durante 10 años en el simulador y como contrato en una cadena Ethereum local. Si las líneas se superponen, el modelo describe algo que de verdad se puede programar.</p></div>
+      </div>
+      <div class="grid-2">
+        <div class="card chart-card"><h4 data-i18n="chain.halving">Oferta fija con halvings</h4><div class="sub" id="halving-sub"></div><div class="chart" id="halving-chart"></div><div class="legend" id="halving-legend"></div></div>
+        <div class="card chart-card"><h4 data-i18n="chain.dividend">Algoritmo + dividendo ciudadano</h4><div class="sub" id="dividend-sub"></div><div class="chart" id="dividend-chart"></div><div class="legend" id="dividend-legend"></div></div>
+        <div class="card chart-card"><h4 data-i18n="chain.demurrage">Dinero que se oxida: un saldo ocioso de 10.000</h4><div class="sub" id="demurrage-sub"></div><div class="chart" id="demurrage-chart"></div></div>
+        <div class="card card-pad"><h4 data-i18n="chain.cbdc">Euro digital: lo que hace el contrato</h4><div id="cbdc-steps" class="events" style="margin-top:10px"></div></div>
+      </div>
+    </div>
+    <div class="grid-2 section">
+      <div class="card table-wrap">
+        <div class="card-pad" style="padding-bottom:0"><h4 data-i18n="chain.mortgage">Hipoteca tokenizada: primer año</h4><div class="sub muted" id="mortgage-sub"></div></div>
+        <div id="mortgage-table"></div>
+      </div>
+      <div class="card table-wrap">
+        <div class="card-pad" style="padding-bottom:0"><h4 data-i18n="chain.gas">Coste de cada operación (gas)</h4><div class="sub muted" data-i18n="chain.gas.sub">Unidades de cómputo de la EVM. En una red de capa 2 el coste en euros es de céntimos.</div></div>
+        <div id="gas-table"></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-head"><div><h2 data-i18n="chain.code">El código</h2><p id="deploy-info"></p></div></div>
+      <div class="grid-3" id="contract-cards"></div>
+      <div class="card" id="code-view" hidden style="margin-top:14px"><div class="card-pad" style="display:flex;justify-content:space-between;align-items:center"><h4 id="code-title"></h4><button class="btn small" id="code-close">×</button></div><pre class="code" id="code"></pre></div>
     </div>
   </section>
 
   <!-- ============================================================ METODOLOGÍA -->
   <section id="view-method" class="view">
-    <div class="doc">
+    <div class="doc" data-lang="es">
       <div class="eyebrow">Metodología</div>
       <h1 style="font-size:28px">Cómo funciona el modelo</h1>
       <p style="margin-top:10px">Monetary Systems Lab es un modelo <b>basado en agentes</b> (ABM) con <b>contabilidad stock-flujo consistente</b> (SFC), la familia de modelos que combinan la heterogeneidad de los hogares con balances que cuadran por construcción (Godley y Lavoie, 2007; Caiani et al., 2016). La pregunta que responde: <i>¿qué consecuencias tiene cada forma de organizar el dinero y qué precio se paga con cada una?</i></p>
       <div class="toc">
         <a class="tag" href="#m-agents">Agentes</a><a class="tag" href="#m-sfc">Contabilidad</a><a class="tag" href="#m-month">Un mes</a>
-        <a class="tag" href="#m-eq">Ecuaciones</a><a class="tag" href="#m-regimes">Regímenes</a><a class="tag" href="#m-calib">Calibración</a>
-        <a class="tag" href="#m-valid">Validación</a><a class="tag" href="#m-limits">Limitaciones</a><a class="tag" href="#m-refs">Referencias</a><a class="tag" href="#m-road">Hoja de ruta</a>
+        <a class="tag" href="#m-eq">Ecuaciones</a><a class="tag" href="#m-regimes">Sistemas</a><a class="tag" href="#m-shocks">Crisis</a>
+        <a class="tag" href="#m-calib">Calibración</a><a class="tag" href="#m-sens">Sensibilidad</a><a class="tag" href="#m-chain">Contratos</a>
+        <a class="tag" href="#m-valid">Tests</a><a class="tag" href="#m-limits">Limitaciones</a><a class="tag" href="#m-refs">Referencias</a>
       </div>
 
       <h2 id="m-agents">1. Los agentes</h2>
       <ul>
-        <li><b>Hogares</b> (2.000 por defecto): cada uno con edad, productividad (log-normal), depósitos, bonos, viviendas, hipoteca y participación en la propiedad de empresas y bancos. La riqueza inicial sigue una distribución con cola de Pareto, creciente con la edad. Trabajan, cobran pensión o prestación, consumen, ahorran, alquilan, compran casas y heredan.</li>
-        <li><b>Empresas</b> (sector agregado): contratan según la demanda esperada, fijan precios con un margen sobre el coste laboral, invierten, se endeudan hasta un apalancamiento objetivo y reparten dividendos. También construyen viviendas cuando el precio supera el coste.</li>
+        <li><b>Hogares</b> (2.000 por defecto): cada uno con edad, productividad (log-normal), depósitos, euro digital, bonos, viviendas, hipoteca y participación en la propiedad de empresas y bancos. La riqueza inicial sigue una distribución con cola de Pareto, creciente con la edad. Trabajan, cobran pensión o prestación, consumen, ahorran, alquilan, compran casas y heredan.</li>
+        <li><b>Empresas</b> (sector agregado): contratan según la demanda esperada, fijan precios con un margen sobre el coste laboral, invierten (con una confianza que fluctúa, los <i>animal spirits</i>), se endeudan hasta un apalancamiento objetivo y reparten dividendos. También construyen viviendas cuando el precio supera el coste.</li>
         <li><b>Bancos</b> (sector agregado): conceden hipotecas y crédito empresarial sujetos a capital (8 %), liquidez y solvencia del cliente (LTV 80 %, cuota ≤ 35 % de la renta). Ejecutan hipotecas tras 6 meses de impago.</li>
-        <li><b>Estado</b>: gasto público, pensiones, prestaciones, IRPF progresivo, IVA e impuesto de sociedades. Financia el déficit emitiendo bonos que compran bancos u hogares; si nadie los compra, recorta gasto.</li>
-        <li><b>Banco central</b>: crea dinero base según la regla de emisión elegida y lo introduce por el canal elegido.</li>
+        <li><b>Estado</b>: gasto público, pensiones, prestaciones, IRPF progresivo, IVA e impuesto de sociedades. Financia el déficit con bonos que compran bancos u hogares; si nadie los compra, recorta gasto.</li>
+        <li><b>Banco central</b>: crea dinero base según la regla elegida y lo introduce por el canal elegido; con euro digital, también tiene cuentas de los hogares.</li>
       </ul>
 
       <h2 id="m-sfc">2. Contabilidad de doble entrada</h2>
-      <p>Hay siete instrumentos financieros: depósitos, cuentas de inversión, préstamos, reservas, cuenta del Tesoro, bonos y préstamos del banco central. Cada uno se registra dos veces, como activo de su tenedor y como pasivo de su emisor, en contadores independientes. Todo pago es un asiento que mueve ambos lados a la vez.</p>
-      <p>Hogares, empresas y bancos pagan con depósitos; Estado y banco central con dinero del banco central. Cuando un pago cruza esa frontera (por ejemplo, un hogar paga impuestos), se mueven también las reservas de los bancos. Así el modelo reproduce cómo funciona el dinero en la realidad: <b>los bancos crean depósitos al prestar y los destruyen cuando se les devuelve el préstamo</b> (McLeay, Radia y Thomas, 2014).</p>
-      <div class="callout">En cada mes de cada simulación se comprueba que, para todos los instrumentos, activos − pasivos = 0. El error máximo observado en las 32 combinaciones es del orden de 10<sup>−15</sup> (precisión de la máquina). Si un asiento creara dinero de la nada, los tests fallarían.</div>
+      <p>Hay ocho instrumentos financieros: depósitos, cuentas de inversión, préstamos, reservas, cuenta del Tesoro, bonos, préstamos del banco central y euro digital. Cada uno se registra dos veces, como activo de su tenedor y como pasivo de su emisor, en contadores independientes. Todo pago es un asiento que mueve ambos lados a la vez. Así el modelo reproduce cómo funciona el dinero en la realidad: <b>los bancos crean depósitos al prestar y los destruyen cuando se les devuelve el préstamo</b> (McLeay, Radia y Thomas, 2014).</p>
+      <div class="callout">En cada mes de cada simulación se comprueba que, para todos los instrumentos, activos − pasivos = 0. El error máximo observado en las 576 combinaciones y las 4 crisis es del orden de 10<sup>−15</sup> (precisión de la máquina).</div>
 
       <h2 id="m-month">3. Qué ocurre cada mes</h2>
       <ol>
-        <li>Tipos de interés según el régimen.</li>
-        <li>Emisión de dinero base y entrada por su canal.</li>
-        <li>Empleo: las empresas ajustan plantilla a la demanda esperada (máx. 4 % de la población activa al mes) y pagan nóminas, pidiendo crédito si les falta caja o despidiendo si no lo obtienen.</li>
-        <li>Pensiones, prestaciones, intereses de la deuda, de los depósitos y dividendos.</li>
-        <li>Cuotas hipotecarias, impagos y ejecuciones; alquileres de inquilinos a caseros; IRPF.</li>
-        <li>Consumo e IVA; compras públicas.</li>
+        <li>Tipos de interés según el régimen y efectos de la crisis, si la hay.</li>
+        <li>Emisión de dinero base y entrada por su canal (en euro digital programable si esa es la propiedad del dinero).</li>
+        <li>Empleo: las empresas ajustan plantilla a la demanda esperada y pagan nóminas, pidiendo crédito si les falta caja o despidiendo si no lo obtienen.</li>
+        <li>Pensiones, prestaciones, intereses y dividendos; cuotas hipotecarias, impagos y ejecuciones; alquileres.</li>
+        <li>IRPF con evasión según la privacidad del dinero; oxidación del dinero o reparto entre depósitos y euro digital.</li>
+        <li>Consumo e IVA; compras públicas (ajustadas a la recaudación si hay regla de equilibrio).</li>
         <li>Mercado de vivienda: compras con o sin hipoteca, construcción y precio.</li>
         <li>Financiación del Estado, liquidez y capital de los bancos (con rescate público si el capital cae por debajo del 2 %).</li>
-        <li>Salarios, precios, productividad y expectativas del mes siguiente; envejecimiento y herencias.</li>
-        <li>Métricas y comprobación contable.</li>
+        <li>Inversión, salarios, precios, productividad y expectativas; envejecimiento y herencias; métricas y comprobación contable.</li>
       </ol>
 
       <h2 id="m-eq">4. Ecuaciones de comportamiento</h2>
@@ -257,79 +371,94 @@
       <span class="formula">crecimiento salarial = π<sup>e</sup> + g<sub>A</sub> + φ·(u* − u)        (mín. −2 % anual: rigidez a la baja)
 P = (1 + μ) · w / A        μ sube con el exceso de demanda</span>
       <h3>Tipo de interés</h3>
-      <p>Con banco central discrecional, regla de Taylor: <code>i = r* + π + 0,5(π − π*) − 0,5(u − u*)</code>, con suelo en 0. En los regímenes de reglas, nadie fija el precio del dinero y el tipo sale del mercado monetario: sube cuando la economía nominal crece más deprisa que la cantidad de dinero:</p>
+      <p>Con banco central discrecional, regla de Taylor sobre la inflación subyacente (el banco central "mira a través" de los saltos de márgenes, como en 2022): <code>i = r* + π<sub>core</sub> + 0,5(π<sub>core</sub> − π*) − 0,5(u − u*)</code>, con suelo en 0. En los regímenes de reglas, nadie fija el precio del dinero y el tipo sale del mercado monetario:</p>
       <span class="formula">i = r* + π<sup>e</sup> + κ · ln(M<sup>demandado</sup> / M)        M<sup>demandado</sup> = k · PIB nominal</span>
       <h3>Expectativas</h3>
       <p>Adaptativas, pero ancladas a la inflación que implica cada regla si es creíble: el 2 % con objetivo de inflación; oro +1,5 % menos productividad +1,2 % con patrón oro; emisión programada menos productividad con oferta fija.</p>
       <h3>Consumo e inversión</h3>
-      <span class="formula">C<sub>i</sub> = c<sub>i</sub> · renta disponible<sub>i</sub> + 0,5 % · depósitos<sub>i</sub>        c<sub>i</sub> de 1,00 (rentas bajas) a 0,85 (altas) × efecto del tipo real
-I = 18 % · PIB potencial · (1 − 3 · (r − r*))</span>
+      <span class="formula">C<sub>i</sub> = c<sub>i</sub> · renta disponible<sub>i</sub> + 0,5 % · depósitos<sub>i</sub>        c<sub>i</sub> de 1,00 a 0,85 × efecto del tipo real
+I = 18 % · PIB potencial · (1 − 3 · (r − r*)) · e<sup>a<sub>t</sub></sup>        a<sub>t</sub> = 0,95 · a<sub>t−1</sub> + ε,  ε ~ N(0; 0,05)</span>
       <h3>Vivienda</h3>
-      <p>El precio se mueve por el exceso de demanda (compradores que obtienen financiación frente a viviendas en venta) y se ancla en el valor fundamental: <code>12 · alquiler / (tipo hipotecario real esperado + 2 % − 0,2 · revalorización)</code>. El alquiler sigue a los salarios y sube con la escasez de viviendas en alquiler.</p>
+      <p>El precio se mueve por el exceso de demanda (compradores que obtienen financiación frente a viviendas en venta) y se ancla en el valor fundamental: <code>12 · alquiler / (tipo hipotecario real esperado + 2 % − 0,2 · revalorización)</code>.</p>
 
-      <h2 id="m-regimes">5. Las piezas del sistema monetario</h2>
+      <h2 id="m-regimes">5. Las seis piezas del sistema monetario</h2>
       <div class="card table-wrap"><table class="data" id="m-regimes-table"></table></div>
-      <p style="margin-top:10px">4 × 4 × 2 = <b>32 sistemas</b>. Los regímenes conocidos son puntos de este espacio: el BCE actual (discrecional · bancos · fraccionaria), el patrón oro clásico (oro · bancos · fraccionaria), Bitcoin como moneda nacional (oferta fija · mineros), el Chicago Plan (reserva 100 %) o el «QE para la gente» (dividendo ciudadano).</p>
-      <p>Todas las simulaciones parten del <b>mismo estado</b>: 48 meses de arranque con el sistema actual. Solo entonces se cambian las reglas. En el paso a reserva del 100 % el banco central presta a los bancos las reservas necesarias para respaldar todos los depósitos, como en Benes y Kumhof (2012).</p>
+      <p style="margin-top:10px">4 × 4 × 2 × 3 × 3 × 2 = <b>576 sistemas</b>. Todas las simulaciones parten del <b>mismo estado</b>: 48 meses de arranque con el sistema actual. Solo entonces se cambian las reglas. En el paso a reserva del 100 % el banco central presta a los bancos las reservas necesarias para respaldar todos los depósitos (Benes y Kumhof, 2012).</p>
 
-      <h2 id="m-calib">6. Calibración</h2>
-      <p>Calibración <b>ilustrativa</b> con órdenes de magnitud de España. La calibración formal con microdatos (Encuesta Financiera de las Familias del Banco de España, INE, Eurostat) es la Fase 3.</p>
-      <div class="card table-wrap"><table class="data">
-        <thead><tr><th>Magnitud</th><th>Modelo (sistema actual)</th><th>Referencia España</th></tr></thead>
-        <tbody>
-          <tr><td>Paro medio</td><td>≈ 9 %</td><td>11–12 % (EPA 2024–25)</td></tr>
-          <tr><td>Inflación media</td><td>≈ 2,6 %</td><td>objetivo BCE 2 %</td></tr>
-          <tr><td>Gini de la riqueza</td><td>≈ 0,57–0,60</td><td>≈ 0,69 (EFF)</td></tr>
-          <tr><td>Participación salarial</td><td>56 %</td><td>≈ 55–60 %</td></tr>
-          <tr><td>Hogares propietarios</td><td>75 %</td><td>≈ 75 %</td></tr>
-          <tr><td>Crédito privado / PIB</td><td>≈ 65–70 %</td><td>≈ 120 % (hogares + empresas)</td></tr>
-          <tr><td>Deuda pública / PIB</td><td>≈ 65 %</td><td>≈ 105 %</td></tr>
-        </tbody>
-      </table></div>
+      <h2 id="m-shocks">6. Crisis</h2>
+      <div class="card table-wrap"><table class="data" id="m-shocks-table"></table></div>
 
-      <h2 id="m-valid">7. Validación y tests</h2>
+      <h2 id="m-calib">7. Calibración con datos reales</h2>
+      <p>Siete parámetros (paro natural, volatilidad de la confianza, deuda pública inicial, gasto público, apalancamiento empresarial, porcentaje de propietarios con hipoteca y dispersión de la riqueza) se calibran por el <b>método de los momentos simulados</b>: un descenso por coordenadas busca los valores que minimizan la distancia ponderada entre los momentos del modelo y los de España (2015–2025), incluidos la ley de Okun y la curva de Phillips. La regla de oferta fija se calibra con la inflación actual de Bitcoin. Detalle completo en <a href="#data">Datos reales</a>.</p>
+
+      <h2 id="m-sens">8. Sensibilidad global</h2>
+      <p>Índices de Sobol de primer orden (estimador de Saltelli, 2010) y totales (Jansen, 1999) sobre ocho parámetros inciertos, con N · (D + 2) = 1.280 simulaciones por sistema, más 128 con los parámetros fijos para medir qué parte de la varianza es puro azar. Los índices se expresan como parte de la varianza no aleatoria (S1′ = S1 / (1 − ruido), ST′ = (ST − ruido) / (1 − ruido)); si el azar supera el 90 %, no se interpretan. Distinguen las conclusiones robustas de las que dependen de un supuesto. Resultados en <a href="#sensitivity">Sensibilidad</a>.</p>
+
+      <h2 id="m-chain">9. Smart contracts</h2>
+      <p>Cinco contratos en Solidity 0.8.24 sin dependencias externas implementan las reglas: oferta fija con halvings y validadores, algoritmo con dividendo ciudadano (patrón <i>pull</i>), dinero que se oxida (liquidación perezosa), euro digital programable (límite, cascada inversa, estímulos que caducan, congelación) e hipoteca tokenizada (NFT en garantía). Se prueban con <code>eth-tester</code> y se comparan con el simulador durante 10 años. Ver <a href="#chain">Blockchain</a>.</p>
+
+      <h2 id="m-valid">10. Tests</h2>
       <ul>
-        <li><b>Contabilidad</b>: las 32 combinaciones son stock-flujo consistentes en todos los meses; las filas del balance suman cero y el patrimonio neto total coincide con los activos reales.</li>
-        <li><b>Hechos estilizados</b>: con el sistema actual, paro cerca del natural, inflación cerca del objetivo, Gini y endeudamiento en rangos realistas.</li>
-        <li><b>Mecanismos</b>: la reserva del 100 % mantiene todos los depósitos respaldados; prestar crea dinero y amortizar lo destruye; la oferta fija produce menos inflación que el sistema discrecional.</li>
+        <li><b>Contabilidad</b>: las 576 combinaciones y las 32 básicas en cada crisis son stock-flujo consistentes en todos los meses.</li>
+        <li><b>Mecanismos</b>: reserva 100 % respaldada, crear y destruir dinero al prestar y amortizar, límite del euro digital, caducidad, oxidación, evasión según privacidad, efecto de las crisis y de la regla fiscal.</li>
+        <li><b>Contratos</b>: calendario de emisión y tope, dividendo exacto, oxidación conservando la oferta, cascada, estímulo, congelación, cuota hipotecaria y ejecución.</li>
         <li><b>Reproducibilidad</b>: misma semilla, mismo resultado.</li>
       </ul>
 
-      <h2 id="m-limits">8. Limitaciones (Fase 1)</h2>
+      <h2 id="m-limits">11. Limitaciones</h2>
       <ul>
         <li>Economía cerrada: sin sector exterior, tipo de cambio ni balanza de pagos.</li>
         <li>Empresas y bancos agregados: no hay quiebras individuales ni competencia entre entidades.</li>
-        <li>La productividad crece a ritmo constante: la inversión no la acelera.</li>
-        <li>Sin efectivo físico ni shocks (pandemias, crisis financieras); llegan en la Fase 2.</li>
-        <li>El grado de credibilidad de cada regla es un supuesto, no un resultado.</li>
-        <li>Los resultados muestran <b>mecanismos y órdenes de magnitud</b>, no predicciones. Lo relevante son las diferencias entre regímenes con la misma economía de partida.</li>
+        <li>Todas las viviendas valen lo mismo: por eso el 50 % más pobre conserva más riqueza (16 %) que en España (≈8 %).</li>
+        <li>El crédito privado del modelo es solo bancario (≈65 % del PIB); en España, con bonos y crédito no bancario, ronda el 105–135 %.</li>
+        <li>La productividad crece a ritmo constante; la credibilidad de cada regla es un supuesto (ver Sensibilidad).</li>
+        <li>Los resultados muestran <b>mecanismos y órdenes de magnitud</b>, no predicciones. Lo relevante son las diferencias entre sistemas con la misma economía de partida.</li>
       </ul>
 
-      <h2 id="m-refs">9. Referencias</h2>
+      <h2 id="m-refs">12. Referencias</h2>
       <ul>
         <li>Benes, J. y Kumhof, M. (2012). <i>The Chicago Plan Revisited</i>. IMF Working Paper 12/202.</li>
-        <li>Caiani, A., Godin, A., Caverzasi, E., Gallegati, M., Kinsella, S. y Stiglitz, J. (2016). Agent based-stock flow consistent macroeconomics. <i>Journal of Economic Dynamics and Control</i>, 69.</li>
+        <li>Caiani, A. et al. (2016). Agent based-stock flow consistent macroeconomics. <i>Journal of Economic Dynamics and Control</i>, 69.</li>
         <li>Cantillon, R. (1755). <i>Essai sur la nature du commerce en général</i>.</li>
-        <li>Godley, W. y Lavoie, M. (2007). <i>Monetary Economics: An Integrated Approach to Credit, Money, Income, Production and Wealth</i>. Palgrave Macmillan.</li>
+        <li>Gesell, S. (1916). <i>Die natürliche Wirtschaftsordnung</i>.</li>
+        <li>Godley, W. y Lavoie, M. (2007). <i>Monetary Economics</i>. Palgrave Macmillan.</li>
+        <li>Jansen, M. J. W. (1999). Analysis of variance designs for model output. <i>Computer Physics Communications</i>, 117.</li>
         <li>McLeay, M., Radia, A. y Thomas, R. (2014). Money creation in the modern economy. <i>Bank of England Quarterly Bulletin</i>, Q1.</li>
         <li>Nakamoto, S. (2008). <i>Bitcoin: A Peer-to-Peer Electronic Cash System</i>.</li>
-        <li>Taylor, J. B. (1993). Discretion versus policy rules in practice. <i>Carnegie-Rochester Conference Series on Public Policy</i>, 39.</li>
-        <li>Banco de España. <i>Encuesta Financiera de las Familias</i>.</li>
+        <li>Saltelli, A. et al. (2010). Variance based sensitivity analysis of model output. <i>Computer Physics Communications</i>, 181.</li>
+        <li>Taylor, J. B. (1993). Discretion versus policy rules in practice. <i>Carnegie-Rochester Conference Series</i>, 39.</li>
+        <li>Banco Central Europeo: Distributional Wealth Accounts; Eurostat: series macroeconómicas de España.</li>
       </ul>
+    </div>
 
-      <h2 id="m-road">10. Hoja de ruta</h2>
-      <ul>
-        <li><b>Fase 1 (esta versión)</b>: núcleo contable, población heterogénea, 3 dimensiones, 32 sistemas, Monte Carlo, explorador.</li>
-        <li><b>Fase 2</b>: más dimensiones (dinero que se oxida, CBDC programable con límites y caducidad, privacidad, regla fiscal), biblioteca de shocks y análisis de sensibilidad global (Sobol).</li>
-        <li><b>Fase 3</b>: calibración con microdatos de España y validación frente a 2008–2025.</li>
-        <li><b>Fase 4</b>: reglas de emisión como smart contracts en Solidity (testnet) y calibración de los regímenes cripto con datos on-chain.</li>
-      </ul>
+    <div class="doc" data-lang="en">
+      <div class="eyebrow">Methodology</div>
+      <h1 style="font-size:28px">How the model works</h1>
+      <p style="margin-top:10px">Monetary Systems Lab is an <b>agent-based</b> model (ABM) with <b>stock-flow consistent</b> accounting (SFC): heterogeneous households combined with balance sheets that add up by construction (Godley &amp; Lavoie, 2007; Caiani et al., 2016). It asks: <i>what are the consequences of each way of organising money, and what is the price of each?</i></p>
+      <h2>1. Agents</h2>
+      <p>2,000 heterogeneous <b>households</b> (age, productivity, deposits, digital euro, bonds, homes, mortgages, equity), an aggregate <b>firm</b> sector (hiring, mark-up pricing, investment with AR(1) animal spirits, target leverage, housing construction), an aggregate <b>banking</b> sector (capital, liquidity and borrower-solvency constraints), a <b>government</b> (spending, pensions, benefits, progressive income tax, VAT, corporate tax, bond issuance) and a <b>central bank</b>.</p>
+      <h2>2. Double-entry accounting</h2>
+      <p>Eight financial instruments are each recorded twice, as the holder's asset and the issuer's liability, in independent counters. Banks create deposits when they lend and destroy them when loans are repaid (McLeay, Radia &amp; Thomas, 2014). Every month of every run checks that assets − liabilities = 0 for every instrument; the largest error across all 576 systems and 4 crises is ~10<sup>−15</sup>.</p>
+      <h2>3. Behaviour</h2>
+      <p>Wages follow an expectations-augmented Phillips curve with downward rigidity; prices are a mark-up over unit labour cost. The discretionary central bank follows a Taylor rule on core inflation; under rule-based regimes the interest rate clears the money market. Expectations are adaptive but anchored to the inflation each credible rule implies. Consumption depends on disposable income, liquid wealth and the real rate; investment on the real rate and animal spirits. House prices respond to excess demand and are anchored to a user-cost fundamental.</p>
+      <h2>4. Six building blocks, 576 systems</h2>
+      <p>Issuance rule (discretionary · 2 % algorithm · gold standard · fixed supply with halvings) × channel of new money (banks · government · citizen dividend · miners) × banking (fractional · 100 % reserve) × money properties (normal · demurrage · programmable CBDC) × privacy (mixed · anonymous · traceable) × fiscal rule (free · balanced). All runs start from the same 48-month burn-in under today's system.</p>
+      <h2>5. Crises</h2>
+      <p>Pandemic, banking crisis, energy shock and automation boom, applied to every system.</p>
+      <h2>6. Calibration and validation</h2>
+      <p>Seven parameters are calibrated by the <b>simulated method of moments</b> against Spanish data (Eurostat, ECB Distributional Wealth Accounts, 2015–2025), including Okun's law and the Phillips curve. The fixed-supply rule is calibrated to Bitcoin's current issuance. Remaining gaps (bottom-50 wealth share, private credit) are reported, not hidden.</p>
+      <h2>7. Global sensitivity</h2>
+      <p>First-order (Saltelli, 2010) and total (Jansen, 1999) Sobol indices over eight uncertain parameters, 1,280 runs per system plus 128 fixed-parameter runs that measure how much of the variance is pure chance. Indices are reported as shares of the non-random variance; when chance exceeds 90 % they are not interpreted.</p>
+      <h2>8. Smart contracts</h2>
+      <p>Five dependency-free Solidity 0.8.24 contracts implement the rules (halving token, algorithmic citizen dividend, demurrage money, programmable CBDC with holding limit, reverse waterfall, expiring stimulus and account freezing, tokenised mortgage). They are tested on a local Ethereum chain and match the simulator to machine precision over 10 years.</p>
+      <h2>9. Limitations</h2>
+      <p>Closed economy; aggregate firms and banks; homogeneous house values; bank-only private credit; constant productivity growth; credibility is an assumption. Results show mechanisms and orders of magnitude, not forecasts.</p>
     </div>
   </section>
 </main>
 
 <footer>
-  <div class="wrap">Monetary Systems Lab · modelo educativo y de investigación. Los resultados son simulaciones con supuestos explícitos, no predicciones ni asesoramiento financiero.</div>
+  <div class="wrap" data-i18n="footer">Monetary Systems Lab · modelo educativo y de investigación. Los resultados son simulaciones con supuestos explícitos, no predicciones ni asesoramiento financiero.</div>
 </footer>
 
 <script type="module" src="/static/app.js"></script>

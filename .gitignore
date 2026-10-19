@@ -6,3 +6,5 @@ venv/
 *.pyc
 .claude/
 ~$*
+contracts/build/
+.env*

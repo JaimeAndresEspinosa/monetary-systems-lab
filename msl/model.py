@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .config import Params, Regime
+from .config import SHOCKS, Params, Regime
 from .economy import Economy
 from .metrics import gini, top_share
 
@@ -76,7 +76,7 @@ class Model:
         self.K = p.investment_share * self.y_potential / ((p.depreciation + p.productivity_growth) / 12)
 
         # Riqueza inicial: muy concentrada (cola de Pareto), crece con la edad
-        score = rng.lognormal(0.0, 1.3, n) * (1 + (self.age - 20) / 40) * np.sqrt(self.z)
+        score = rng.lognormal(0.0, p.wealth_sigma, n) * (1 + (self.age - 20) / 40) * np.sqrt(self.z)
         self.score = score
         rank = score.argsort().argsort() / (n - 1)
 
@@ -96,7 +96,7 @@ class Model:
         self.rent = self.rent0
 
         # Hipotecas vivas
-        has_mortgage = owners & (self.age < 55) & (rng.random(n) < 0.55)
+        has_mortgage = owners & (self.age < 55) & (rng.random(n) < p.mortgage_prob)
         frac = rng.uniform(0.2, 1.0, n) * np.clip((55 - self.age) / 35, 0, 1)
         e.loan = np.where(has_mortgage, p.ltv * p.house_price0 * frac, 0.0)
         self.months_left = np.where(has_mortgage,
@@ -150,9 +150,18 @@ class Model:
         self.new_money_deciles = np.zeros(10)
         self.Ph_hist = [self.Ph] * 13
         self.P_hist = [self.P] * 13
+        self.mu_hist = [self.mu] * 13
         self.u = p.natural_unemployment
         self.i = p.neutral_rate + p.inflation_target
         self.money_k = self.e.deposits / gdp
+        # Fase 2: dinero programable, regla fiscal, crisis y evasión
+        self.stim = np.zeros(n)            # euro digital programable pendiente de gastar
+        self.rev_ema = None                # recaudación media (12 meses)
+        self.transfer_ema = None           # pensiones, prestaciones e intereses (12 meses)
+        self.credit_factor = 1.0
+        self.animal = 0.0
+        self.tax_evaded = 0.0
+        self.demurrage_paid = 0.0
         self.real_mort_lr = p.neutral_rate + p.mortgage_spread
         self.e.take_flows()
 
@@ -181,7 +190,7 @@ class Model:
         self.P_ref, self.w_ref, self.Ph_ref = self.P, self.w, self.Ph
         self.y_ref = self.y_expected
         self.fv_ref = self.firm_value() / self.P
-        self.money_k = (e.deposits + float(e.inv.sum())) / self.gdp_ref
+        self.money_k = self.money_stock() / self.gdp_ref
         nw = self.net_worth()
         self.initial_rank = nw.argsort().argsort() / (self.p.households - 1)
         self.wealth0_real = nw / self.P
@@ -199,6 +208,18 @@ class Model:
         discount = max(0.03, self.i + 0.04 - 0.015)
         return max(0.0, profit_y) / discount + self.e.firm_dep - self.e.firm_loan
 
+    def money_stock(self) -> float:
+        """Dinero en manos del público: depósitos, cuentas de inversión y euro digital."""
+        e = self.e
+        return e.deposits + float(e.inv.sum()) + float(e.cbdc.sum())
+
+    def shock_age(self) -> int | None:
+        """Meses desde que empezó la crisis (None si no hay o aún no ha llegado)."""
+        if self.p.shock == "none" or not self.recording:
+            return None
+        k = self.t - self.p.shock_month
+        return k if k >= 0 else None
+
     def inflation_anchor(self) -> float:
         """Inflación que la gente espera a largo plazo si se cree la regla:
         crecimiento del dinero menos crecimiento de la productividad."""
@@ -208,7 +229,7 @@ class Model:
         if self.r.issuance == "gold":
             return p.gold_growth - p.productivity_growth
         issuance = p.fixed_initial_issuance * 0.5 ** (self.t // p.halving_months)
-        share = self.base0 / max(self.e.deposits + float(self.e.inv.sum()), 1)
+        share = self.base0 / max(self.money_stock(), 1)
         return issuance * share - p.productivity_growth
 
     def bank_value(self) -> float:
@@ -216,7 +237,7 @@ class Model:
 
     def net_worth(self) -> np.ndarray:
         e = self.e
-        return (e.dep + e.inv + e.bonds - e.loan + self.houses * self.Ph
+        return (e.dep + e.inv + e.cbdc + e.bonds - e.loan + self.houses * self.Ph
                 + self.shares * (self.firm_value() + self.bank_value()))
 
     def lending_room(self) -> float:
@@ -233,7 +254,7 @@ class Model:
             # le sobren reservas: parte de lo prestado acaba saliendo del perímetro
             # (impuestos, compra de bonos) y tiene que poder cubrirlo
             by_liquidity = 5 * max(0.0, e.bank_res - p.reserve_ratio * e.bank_dep_liab)
-        return max(0.0, min(by_capital, by_liquidity))
+        return max(0.0, min(by_capital, by_liquidity)) * self.credit_factor
 
     def bank_spend_room(self) -> float:
         """Lo que el banco puede pagar (dividendos, intereses) sin romper su restricción."""
@@ -253,13 +274,16 @@ class Model:
         # ---------------------------------------------- 1. tipos de interés
         pi_yoy = self.P / self.P_hist[-13] - 1
         if self.r.issuance == "discretionary":
-            i = p.neutral_rate + pi_yoy + 0.5 * (pi_yoy - p.inflation_target) \
+            # regla de Taylor sobre la inflación subyacente: el banco central "mira a través"
+            # de los saltos de márgenes (shocks de oferta como el energético)
+            core = (1 + pi_yoy) / ((1 + self.mu) / (1 + self.mu_hist[-13])) - 1
+            i = p.neutral_rate + core + 0.5 * (core - p.inflation_target) \
                 - 0.5 * (self.u - p.natural_unemployment)
             i = max(0.0, i)
         else:
             # sin banco central que fije el precio del dinero, el tipo sale del mercado:
             # sube cuando la economía nominal crece más deprisa que la cantidad de dinero
-            money = self.e.deposits + float(self.e.inv.sum())
+            money = self.money_stock()
             demand = self.money_k * 12 * self.y_expected * self.P
             i = p.neutral_rate + self.pi_e + p.money_rate_sens * np.log(max(demand, 1) / max(money, 1))
             i = float(np.clip(i, 0.0, 0.25))
@@ -269,6 +293,8 @@ class Model:
         r_bond = (i + p.bond_spread) / 12
         r_dep = max(0.0, i - 0.01) / 12 if self.r.banking == "fractional" else 0.0
         r_inv = max(0.0, i + p.mortgage_spread - 0.015) / 12
+
+        shock = self._shock()
 
         # ------------------------------------------ 2. emisión de dinero base
         base = e.cb_res_liab + e.cb_acct_liab
@@ -391,9 +417,18 @@ class Model:
 
         # impuesto sobre la renta (progresivo)
         gross = wages + pensions + benefits + cap_income
+        # evasión: el 20 % más rico oculta parte de sus rentas del capital,
+        # más o menos según lo que Hacienda pueda ver de cada pago
+        evasion = {"anonymous": p.evasion_anonymous, "mixed": p.evasion_mixed,
+                   "traceable": p.evasion_traceable}[self.r.privacy]
+        liquid = e.dep + e.bonds + e.inv + e.cbdc + self.houses * self.Ph
+        rich = liquid >= np.quantile(liquid, 0.8)
+        hidden = np.where(rich, evasion * cap_income, 0.0)
+        taxable = gross - hidden
         # IRPF + cotizaciones sociales, con tipo medio progresivo
-        avg_rate = p.income_tax_base + p.income_tax_prog * (1 - np.exp(-gross / (1.5 * self.w)))
-        tax = np.minimum(avg_rate * gross, np.maximum(e.dep, 0))
+        avg_rate = p.income_tax_base + p.income_tax_prog * (1 - np.exp(-taxable / (1.5 * self.w)))
+        tax = np.minimum(avg_rate * taxable, np.maximum(e.dep, 0))
+        self.tax_evaded = float((avg_rate * hidden).sum())
         e.pay("hh", "gov", "IRPF y cotizaciones", src_vec=tax)
         self.income = gross
 
@@ -404,10 +439,19 @@ class Model:
         # reales bajos (o inflación) se adelanta el consumo
         real_rate = i - self.pi_e
         mpc *= float(np.clip(1 - p.hoarding * (real_rate - p.neutral_rate), 0.7, 1.15))
-        cons = mpc * (gross - tax) + p.wealth_mpc * np.maximum(e.dep, 0)
+        wealth_mpc = p.wealth_mpc
+        released = self._money_properties(gross)
+        if self.r.money == "demurrage":
+            wealth_mpc += 0.5 * p.demurrage_rate   # guardar cuesta: se gasta antes
+        cons = mpc * (gross - tax) + wealth_mpc * np.maximum(e.dep, 0)
+        cons = cons * shock["cons"] + released     # el dinero programable se gasta sí o sí
         cons = np.clip(cons, 0, np.maximum(e.dep, 0))
         e.pay("hh", "firm", "Consumo", src_vec=cons)
-        G = p.gov_spending_share * self.y_potential * self.P * self.gov_cut + gov_extra
+        G = p.gov_spending_share * self.y_potential * self.P * self.gov_cut
+        if self.r.fiscal == "balanced" and self.rev_ema is not None:
+            G = float(np.clip(self.rev_ema - self.transfer_ema, 0.5 * G, 1.1 * G))
+        # lo que se oxida se gasta en obra pública el mismo mes (como en Wörgl, 1932)
+        G += gov_extra + self.demurrage_paid
         e.pay("gov", "firm", "Compras públicas", amount=G)
 
         # --------------------------------------------------- 7. vivienda
@@ -427,13 +471,22 @@ class Model:
         self.firm_profit_hist.append(self.firm_profit)
         # las empresas mantienen una deuda proporcional a su capital: piden prestado
         # para invertir si están por debajo del objetivo y amortizan si están por encima
-        target_debt = p.firm_leverage * self.K * self.P
+        target_debt = p.firm_leverage * self.K * self.P * (0.7 + 0.3 * self.credit_factor)
         if e.firm_loan < target_debt:
             x = min(0.05 * (target_debt - e.firm_loan), self.lending_room())
             if x > 0:
                 e.lend_firm(x)
         elif e.firm_dep > 2 * bill:
             e.repay_firm(min(0.05 * (e.firm_loan - target_debt), e.firm_dep - 2 * bill))
+
+        # medias de 12 meses de lo que entra y sale del Estado (para la regla fiscal)
+        revenue_gov = float(tax.sum()) + vat + ctax + self.demurrage_paid
+        transfers = (float(pensions.sum() + benefits.sum() + coupons_hh.sum())
+                     + e.bank_bonds * r_bond)
+        if self.rev_ema is None:
+            self.rev_ema, self.transfer_ema = revenue_gov, transfers
+        self.rev_ema += (revenue_gov - self.rev_ema) / 12
+        self.transfer_ema += (transfers - self.transfer_ema) / 12
 
         # ------------------------------------------- 8. Estado y bancos
         self._finance_government(G)
@@ -446,7 +499,10 @@ class Model:
         # entre sectores) pero genera empleo y se financia con caja o crédito
         real_rate = i - self.pi_e
         inv_factor = float(np.clip(1 - p.investment_rate_sens * (real_rate - p.neutral_rate), 0.5, 1.5))
-        investment = p.investment_share * self.y_potential * inv_factor
+        # "animal spirits": la confianza empresarial fluctúa (proceso AR(1)) y genera ciclos
+        self.animal = p.spirits_rho * self.animal + p.spirits_sd * rng.normal()
+        investment = (p.investment_share * self.y_potential * inv_factor * shock["inv"]
+                      * float(np.exp(self.animal)))
         self.K = self.K * (1 - p.depreciation / 12) + investment
         # la obra de una vivienda se reparte a lo largo de ~1 año de producción
         self.construction = 0.92 * self.construction + 0.08 * built * 0.75 * p.house_price0
@@ -455,12 +511,14 @@ class Model:
         self.u = 1 - (self.employed & lf).sum() / max(1, lf.sum())
         gap = float(np.clip(real_sales / max(self.y_potential, 1) - 1, -0.3, 0.3))
         self.mu = 0.9 * self.mu + 0.1 * p.markup * (1 + 1.5 * gap)
+        self.mu = max(self.mu, shock["mu_floor"])
         wage_growth = self.pi_e + p.productivity_growth + p.phillips * (p.natural_unemployment - self.u)
         wage_growth = max(p.wage_floor, wage_growth)
         self.w *= 1 + wage_growth / 12
-        self.A *= 1 + p.productivity_growth / 12
+        self.A *= (1 + p.productivity_growth / 12) * shock["A"]
         self.P = (1 + self.mu) * self.w / self.A
         self.P_hist.append(self.P)
+        self.mu_hist.append(self.mu)
         pi_yoy = self.P / self.P_hist[-13] - 1
         # expectativas: adaptativas, pero ancladas a la inflación que implica la regla
         adaptive = 0.92 * self.pi_e + 0.08 * pi_yoy
@@ -504,9 +562,86 @@ class Model:
             return x
         vec = (np.full(self.p.households, x / self.p.households) if ch == "dividend"
                else self.miner_shares * x)
-        e.pay("cb", "hh", "Dinero nuevo", dst_vec=vec)
+        if self.r.money == "cbdc":
+            # dinero programable: llega en euro digital y caduca si no se gasta
+            e.cb_issue_cbdc(vec)
+            self.stim += vec
+        else:
+            e.pay("cb", "hh", "Dinero nuevo", dst_vec=vec)
         self._credit_deciles(vec)
         return 0.0
+
+    def _shock(self) -> dict:
+        """Efectos de la crisis elegida en este mes."""
+        p, e = self.p, self.e
+        out = {"cons": 1.0, "inv": 1.0, "A": 1.0, "mu_floor": 0.0}
+        self.credit_factor = 1.0
+        k = self.shock_age()
+        if k is None:
+            return out
+        size = p.shock_size
+        if k == 0:
+            self.events.append({"t": self.t, "type": "shock",
+                                "text": f"Empieza la crisis: {SHOCKS[p.shock]['label'].lower()}"})
+        if p.shock == "pandemic" and k < 6:
+            out["cons"] = 1 - 0.25 * size
+            out["inv"] = 1 - 0.30 * size
+        elif p.shock == "banking":
+            if k == 0:
+                self.Ph *= 1 - 0.25 * size
+                self.Ph_hist[-1] = self.Ph
+                e.write_off_firm(0.06 * size * e.firm_loan)
+            if k < 24:
+                self.credit_factor = 0.3 + 0.7 * k / 24
+            if k < 12:
+                # caída de confianza: se invierte menos y se ahorra por precaución
+                out["inv"] = 1 - 0.30 * size
+                out["cons"] = 1 - 0.06 * size
+        elif p.shock == "energy" and k < 12:
+            out["mu_floor"] = p.markup + 0.10 * size * (1 - k / 12)
+        elif p.shock == "automation" and k < 12:
+            out["A"] = (1 + 0.10 * size) ** (1 / 12)
+        return out
+
+    def _money_properties(self, income: np.ndarray) -> np.ndarray:
+        """Oxidación del dinero o euro digital. Devuelve el gasto forzoso del
+        dinero programable que se libera este mes."""
+        p, e = self.p, self.e
+        self.demurrage_paid = 0.0
+        released = np.zeros(p.households)
+        if self.r.money == "demurrage":
+            exempt = np.maximum(income, 0)               # un mes de renta no se oxida
+            fee = p.demurrage_rate * np.maximum(e.dep - exempt, 0)
+            e.pay("hh", "gov", "Oxidación del dinero", src_vec=fee)
+            bill = self.w * float((self.z * self.employed).sum())
+            ffee = p.demurrage_rate * max(0.0, e.firm_dep - 2 * bill)
+            e.pay("firm", "gov", "Oxidación del dinero", amount=ffee)
+            self.demurrage_paid = float(fee.sum()) + ffee
+        elif self.r.money == "cbdc":
+            # el dinero programable se gasta en ~4 meses; lo que queda caduca
+            if self.stim.sum() > 0:
+                out = np.minimum(self.stim * 0.25, e.cbdc)
+                e.from_cbdc(out)
+                released = out
+                self.stim -= out
+                expire = np.minimum(self.stim / p.stimulus_expiry, e.cbdc)
+                e.expire_cbdc(expire)
+                self.stim -= expire
+            # cada hogar reparte su liquidez entre depósitos y euro digital (con límite)
+            limit = p.cbdc_limit          # límite nominal fijo, como propone el BCE
+            free = e.cbdc - self.stim
+            target = np.minimum(limit, p.cbdc_share * np.maximum(e.dep + free, 0))
+            move = target - free
+            up = np.clip(move, 0, np.maximum(e.dep, 0))
+            down = np.clip(-move, 0, np.maximum(free, 0))
+            if self.r.banking == "fractional" and self.r.issuance not in LOLR:
+                # sin prestamista de última instancia el banco no puede perder más reservas de las que tiene
+                cap = max(0.0, e.bank_res - p.reserve_ratio * e.bank_dep_liab)
+                if up.sum() > cap:
+                    up *= cap / up.sum()
+            e.to_cbdc(up)
+            e.from_cbdc(down)
+        return released
 
     def _credit_deciles(self, vec: np.ndarray):
         nw = self.net_worth()
@@ -704,7 +839,10 @@ class Model:
         workers = lf & self.employed
         median_wage = float(np.median(self.income[workers])) if workers.any() else self.w
         self.record("rent_burden", self.rent / max(1.0, median_wage))
-        self.record("broad_money", (e.deposits + float(e.inv.sum())) / ref)
+        self.record("broad_money", self.money_stock() / ref)
+        self.record("cbdc_share", float(e.cbdc.sum()) / max(self.money_stock(), 1))
+        self.record("tax_gap", 12 * self.tax_evaded / max(gdp_y, 1))
+        self.record("demurrage", 12 * self.demurrage_paid / max(gdp_y, 1))
         self.record("base_money", (e.cb_res_liab + e.cb_acct_liab) / ref)
         self.record("credit_gdp", e.bank_loans / max(gdp_y, 1))
         self.record("debt_gdp", e.gov_bonds_liab / max(gdp_y, 1))

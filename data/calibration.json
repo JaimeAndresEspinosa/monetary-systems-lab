@@ -1,0 +1,115 @@
+{
+ "generated": "2026-10-19 12:28",
+ "method": "SMM, descenso por coordenadas (2 rondas)",
+ "window": "2015–2025",
+ "real": {
+  "unemployment": 0.15072727272727274,
+  "inflation": 0.021454545454545455,
+  "debt_gdp": 1.0499999999999998,
+  "credit_gdp": 1.3315454545454546,
+  "top10_wealth": 0.5411166363636364,
+  "bottom50_wealth": 0.07848281818181818,
+  "gini_income": 0.3272727272727272,
+  "okun": -0.6587351921604752,
+  "phillips": -0.8545411439349663,
+  "vol_ratio": 0.514806294814665,
+  "years_stylized": "2009–2025"
+ },
+ "before": {
+  "unemployment": 0.09018160083025425,
+  "inflation": 0.028846974003504198,
+  "debt_gdp": 0.7311358189400793,
+  "credit_gdp": 0.6681419707817163,
+  "top10_wealth": 0.49049907400826964,
+  "bottom50_wealth": 0.15899148582337067,
+  "gini_income": 0.41268300081404874,
+  "okun": 0.34705876493765325,
+  "phillips": -0.54254490801976,
+  "vol_ratio": 0.23293428726300341,
+  "sfc": 1.87189580738199e-15
+ },
+ "after": {
+  "unemployment": 0.1299720974613086,
+  "inflation": 0.02902422968891027,
+  "debt_gdp": 0.7903048710299427,
+  "credit_gdp": 0.6562974479306513,
+  "top10_wealth": 0.4670952158609517,
+  "bottom50_wealth": 0.16272041216569472,
+  "gini_income": 0.41965141888282775,
+  "okun": -0.31819462397226195,
+  "phillips": -0.6666142382843403,
+  "vol_ratio": 0.3640598210751344,
+  "sfc": 1.5456428940304188e-15
+ },
+ "params_before": {
+  "natural_unemployment": 0.1,
+  "spirits_sd": 0.0,
+  "debt_to_gdp0": 1.0,
+  "gov_spending_share": 0.18,
+  "firm_leverage": 0.25,
+  "mortgage_prob": 0.55,
+  "wealth_sigma": 1.3
+ },
+ "params": {
+  "natural_unemployment": 0.14,
+  "spirits_sd": 0.05,
+  "debt_to_gdp0": 1.1,
+  "gov_spending_share": 0.17,
+  "firm_leverage": 0.25,
+  "mortgage_prob": 0.75,
+  "wealth_sigma": 1.3
+ },
+ "distance_before": 7.0963056350154865,
+ "distance_after": 1.8382359186199986,
+ "history": [
+  {
+   "round": 0,
+   "distance": 7.0963056350154865
+  },
+  {
+   "round": 1,
+   "distance": 1.953857261847662
+  },
+  {
+   "round": 2,
+   "distance": 1.2890168804727693
+  }
+ ],
+ "moments": {
+  "unemployment": {
+   "label": "Paro medio",
+   "fmt": "pct",
+   "weight": 1.0
+  },
+  "inflation": {
+   "label": "Inflación media",
+   "fmt": "pct",
+   "weight": 1.0
+  },
+  "debt_gdp": {
+   "label": "Deuda pública / PIB",
+   "fmt": "pct",
+   "weight": 0.6
+  },
+  "credit_gdp": {
+   "label": "Deuda privada / PIB",
+   "fmt": "pct",
+   "weight": 0.6
+  },
+  "top10_wealth": {
+   "label": "Riqueza del 10 % más rico",
+   "fmt": "pct",
+   "weight": 1.0
+  },
+  "bottom50_wealth": {
+   "label": "Riqueza del 50 % más pobre",
+   "fmt": "pct",
+   "weight": 0.6
+  },
+  "gini_income": {
+   "label": "Gini de la renta",
+   "fmt": "dec",
+   "weight": 0.4
+  }
+ }
+}

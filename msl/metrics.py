@@ -50,6 +50,9 @@ METRICS = {
     "bank_capital":     {"label": "Capital bancario / préstamos", "fmt": "pct", "better": None, "group": "Finanzas"},
     "stock_index":      {"label": "Bolsa (valor real de las empresas)", "fmt": "idx", "better": None, "group": "Finanzas"},
     "bailouts":         {"label": "Rescates bancarios (acum., % PIB)", "fmt": "pct", "better": "low", "group": "Finanzas"},
+    "cbdc_share":       {"label": "Dinero en euro digital", "fmt": "pct", "better": None, "group": "Dinero"},
+    "tax_gap":          {"label": "Impuestos evadidos (% PIB)", "fmt": "pct", "better": "low", "group": "Estado"},
+    "demurrage":        {"label": "Recaudación por oxidación (% PIB)", "fmt": "pct", "better": None, "group": "Estado"},
 }
 
 # Resumen que aparece en las tarjetas y en el explorador
@@ -58,6 +61,7 @@ SUMMARY = [
     ("gini_wealth", "delta"), ("top10_wealth", "delta"), ("house_price_real", "last"),
     ("price_to_income", "last"), ("real_gdp", "last"), ("debt_gdp", "last"),
     ("foreclosures", "last"), ("stock_index", "last"), ("bailouts", "last"),
+    ("tax_gap", "mean"), ("unemployment", "max"), ("real_gdp", "min"),
 ]
 
 
@@ -67,6 +71,10 @@ def summarize(series: dict[str, list[float]]) -> dict[str, float]:
         s = np.asarray(series[key])
         if how == "mean":
             out[f"{key}:{how}"] = float(s[12:].mean() if len(s) > 12 else s.mean())
+        elif how == "max":
+            out[f"{key}:{how}"] = float(s.max())
+        elif how == "min":
+            out[f"{key}:{how}"] = float(s.min())
         elif how == "last":
             out[f"{key}:{how}"] = float(s[-1])
         else:
