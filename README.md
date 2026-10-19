@@ -1,5 +1,8 @@
 # Monetary Systems Lab
 
+**Web publicada: https://monetary-systems-lab.onrender.com**  
+[![tests](https://github.com/JaimeAndresEspinosa/monetary-systems-lab/actions/workflows/tests.yml/badge.svg)](https://github.com/JaimeAndresEspinosa/monetary-systems-lab/actions/workflows/tests.yml)
+
 **Simulador de sistemas monetarios.** Combina seis piezas (regla de emisión, canal
 del dinero nuevo, sistema bancario, propiedades del dinero, privacidad y regla
 fiscal), que dan **576 sistemas distintos**, y mide qué le pasa a una economía de
@@ -151,7 +154,7 @@ python scripts/deploy_contracts.py   # lee RPC_URL y PRIVATE_KEY del entorno
 
 ## Publicarla
 
-Sube la carpeta a GitHub y en Render crea un *Blueprint* con `render.yaml` (o un
+Está desplegada en Render con `render.yaml` (plan gratuito: la primera visita tras un rato sin uso tarda ~50 s en despertar). Para otra copia: sube la carpeta a GitHub y en Render crea un *Blueprint* con `render.yaml` (o un
 *Web Service* con build `pip install -r requirements.txt` y start
 `uvicorn app:app --host 0.0.0.0 --port $PORT`). GitHub Actions ejecuta los tests de
 modelo y contratos en cada push.
