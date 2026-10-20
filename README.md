@@ -64,11 +64,47 @@ reproduce el signo de la ley de Okun (−0,32 frente a −0,66) y de la curva de
 (−0,67 frente a −0,86). No reproduce bien la cuota del 50 % más pobre ni el nivel de
 crédito privado (ver Limitaciones).
 
+## Laboratorio de políticas
+
+Prueba medidas económicas para España sobre el sistema monetario actual (BCE, bancos,
+reserva fraccionaria), con o sin crisis, y mira **a quién afectan**.
+
+- **Palancas** (los valores por defecto son los de hoy y no cambian nada del modelo):
+  IRPF (tipo de las rentas bajas y progresividad), IVA, sociedades, impuesto adicional
+  sobre el patrimonio · tasa de sustitución y edad de jubilación · prestación por
+  desempleo, subida del SMI, políticas activas de empleo · licencias más rápidas,
+  vivienda pública en alquiler social, tope al alquiler, ayuda y aval para la entrada
+  de menores de 36 · nivel del gasto público y parte que es inversión.
+- **Contrafactual emparejado**: cada medida se simula dos veces con la misma semilla.
+  Se aplica al terminar el arranque, así que los hogares de partida son idénticos con y
+  sin ella, y se usan números aleatorios comunes (cada proceso aleatorio con su propia
+  secuencia). Así el efecto de la medida no se confunde con el azar.
+- **¿Y a mí cómo me afecta?** Describe tu hogar (edad, ingresos, alquiler o propiedad,
+  ahorros, zona) y se buscan los hogares simulados más parecidos: ingresos netos, gasto
+  en vivienda, lo que queda tras pagarla, probabilidad de comprar casa en N años,
+  patrimonio y pensión estimada, con y sin la medida, con bandas 10–90 %.
+- **Quién gana y quién pierde** por decil de renta, edad y tenencia de vivienda, y un
+  resumen neutral: nunca se presenta una medida como «la mejor».
+- **¿Cuánto fiarse?** Cada palanca indica su nivel de confianza y la evidencia en que se
+  apoya. Las reacciones de comportamiento son elasticidades explícitas y ajustables
+  (empleo frente al SMI, paro frente a la prestación, eficacia de las políticas activas,
+  retirada de pisos frente al tope, capital público, elusión del impuesto al patrimonio).
+  Un botón repite la medida con cada supuesto en sus extremos, y para las ocho medidas de
+  ejemplo hay un análisis de Sobol precalculado (`data/policy_sensitivity.json`).
+- **Contabilidad**: con cada palanca en sus extremos, con y sin crisis bancaria, el
+  error contable sigue por debajo de 10⁻⁹. Con todas las palancas en su valor de hoy, los
+  resultados son exactamente los mismos que antes.
+
+Límites principales: la población no envejece (clave para las pensiones), nadie cambia
+sus horas de trabajo por los impuestos, hay un solo mercado de vivienda y las medidas se
+pagan con deuda salvo que se combinen con subidas de impuestos.
+
 ## Qué hay en la web
 
 | Sección | Qué hace |
 |---|---|
 | **Laboratorio** | Elige las seis piezas y una crisis; Monte Carlo con mediana y banda 10–90 %, 28 indicadores, reparto de la riqueza por decil (efecto Cantillon), por dónde entra el dinero nuevo, balances y flujos de todos los sectores |
+| **Políticas** | Laboratorio de políticas: medidas para España, «¿Y a mí cómo me afecta?», ganadores y perdedores, y confianza en cada resultado |
 | **Comparar** | Tres sistemas con la misma economía, las mismas semillas y la misma crisis |
 | **Explorador** | Las 576 combinaciones × 5 escenarios (14.400 economías), ordenables y filtrables, con el **efecto principal** de cada pieza |
 | **Sensibilidad** | Índices de Sobol S1 y ST de ocho supuestos sobre seis resultados en cuatro sistemas, y qué parte de la varianza es puro azar |
@@ -112,7 +148,8 @@ python scripts/fetch_onchain.py     # Bitcoin + stablecoins -> data/onchain.json
 python scripts/build_grid.py        # 576 sistemas x 5 escenarios -> data/grid.json
 python scripts/build_sensitivity.py # Sobol           -> data/sensitivity.json
 python scripts/contracts_demo.py    # contratos vs modelo, gas -> data/contracts_demo.json
-python -m pytest                    # ~760 tests
+python scripts/build_policy_sensitivity.py  # Sobol de las medidas -> data/policy_sensitivity.json
+python -m pytest                    # ~870 tests
 ```
 
 Desplegar los contratos en la testnet Sepolia (con tu propia clave de pruebas y
@@ -132,13 +169,14 @@ python scripts/deploy_contracts.py   # lee RPC_URL y PRIVATE_KEY del entorno
 | `msl/metrics.py` | Gini, cuotas e indicadores |
 | `msl/experiments.py` | Monte Carlo y barrido de combinaciones |
 | `msl/sensitivity.py` | Índices de Sobol (Saltelli / Jansen) |
+| `msl/policy.py` | Laboratorio de políticas: palancas, evidencia, medidas de ejemplo, contrafactual emparejado, «¿Y a mí?» |
 | `msl/validation.py` | Momentos y hechos estilizados frente a los datos reales |
 | `msl/chain.py` | Compilación y despliegue de los contratos |
 | `contracts/*.sol` | `HalvingToken`, `AlgorithmicDividend`, `DemurrageToken`, `ProgrammableCBDC`, `TokenizedMortgage` |
 | `app.py` | API FastAPI |
 | `static/` | Web (HTML, CSS y JavaScript sin dependencias; gráficos SVG propios; español e inglés) |
 | `data/` | Datos reales descargados y resultados precalculados |
-| `tests/` | Contabilidad de las 576 combinaciones y crisis, mecanismos, validación y contratos |
+| `tests/` | Contabilidad de las 576 combinaciones, crisis y palancas de política en sus extremos, mecanismos, validación y contratos |
 
 ### API
 
@@ -151,6 +189,9 @@ python scripts/deploy_contracts.py   # lee RPC_URL y PRIVATE_KEY del entorno
 | `GET /api/validation` | Calibración y series de España |
 | `GET /api/onchain` | Bitcoin y stablecoins |
 | `GET /api/contracts` | Resultados de los contratos y su código |
+| `GET /api/policy/catalog` | Palancas, supuestos, medidas de ejemplo y su análisis de Sobol |
+| `POST /api/policy/simulate` | Economía con y sin la medida: indicadores, series, ganadores y perdedores (`robustness: true` añade los supuestos extremos) |
+| `POST /api/policy/household` | «¿Y a mí?»: resultados de los hogares simulados más parecidos al descrito |
 
 ## Publicarla
 

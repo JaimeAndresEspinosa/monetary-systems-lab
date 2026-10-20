@@ -1,6 +1,7 @@
 import { lineChart, divergingBars, hBars, fmt } from "/static/charts.js";
 import { T, lang, applyStatic, CAT, SHOCKS_EN, METRICS_EN, SECTORS_EN, INSTRUMENTS_EN, FLOWS_EN, LOCALE } from "/static/i18n.js";
 import { renderSensitivity, renderData, renderChain } from "/static/insights.js";
+import { initPolicy, relabelPolicy } from "/static/policy.js";
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -104,7 +105,7 @@ function setSfc(err) {
 }
 
 // ------------------------------------------------------------------ router
-const VIEWS = ["lab", "compare", "explore", "sensitivity", "data", "chain", "method"];
+const VIEWS = ["lab", "policy", "compare", "explore", "sensitivity", "data", "chain", "method"];
 function route() {
   const v = (location.hash.slice(1) || "lab").split("?")[0];
   const view = VIEWS.includes(v) ? v : v.startsWith("m-") ? "method" : "lab";
@@ -504,6 +505,7 @@ function relabel() {
   $$("#p-months option").forEach((o) => (o.textContent = `${o.value / 12} ${T("años", "years")}`));
   $$("#p-shock-month option").forEach((o) => (o.textContent = `${T("Año", "Year")} ${o.value / 12 + 1}`));
   setBusy(state.busy);
+  relabelPolicy();
   if (state.last) renderLab();
   if (state.cmp) renderCompare();
   route();
@@ -539,6 +541,9 @@ async function init() {
   }));
   window.addEventListener("hashchange", route);
   relabel();
+  initPolicy({ api, setBusy, setSfc, shockLabel: L.shock, shocks: () => state.catalog.shocks })
+    .then(relabelPolicy)
+    .catch((err) => { document.getElementById("pol-levers").innerHTML = `<div class="empty">${err.message}</div>`; });
   getGrid("none").catch(() => {}).finally(runLab);
 }
 init();

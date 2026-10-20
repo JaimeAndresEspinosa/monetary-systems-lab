@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from msl import CATALOG, Params, Regime, monte_carlo
+from msl import policy as pol
 from msl.config import CORE, LIMITS, SHOCKS
 from msl.economy import INSTRUMENTS, SECTOR_LABELS
 from msl.metrics import METRICS, SUMMARY
@@ -171,7 +172,77 @@ def contract_source(name: str):
     return (CONTRACTS / f"{name}.sol").read_text(encoding="utf-8")
 
 
+# ------------------------------------------------------ laboratorio de políticas
+class PolicyRequest(BaseModel):
+    levers: dict = {}
+    shock: str = "none"
+    shock_month: int = Field(24, ge=0, le=180)
+    months: int = Field(120, ge=60, le=180)
+    households: int = Field(1500, ge=500, le=3000)
+    seeds: int = Field(4, ge=2, le=12)
+    robustness: bool = False
+
+
+class HouseholdRequest(PolicyRequest):
+    age: float = Field(..., ge=18, le=80)
+    income: float = Field(..., ge=0, le=100_000)
+    tenure: str = "renter"
+    savings: float = Field(0, ge=0, le=10_000_000)
+    years: int = Field(5, ge=1, le=15)
+    region_factor: float = Field(1.0, ge=0.3, le=3.0)
+
+
+def _policy_key(req: PolicyRequest) -> str:
+    if req.shock not in SHOCKS:
+        raise HTTPException(400, f"Crisis desconocida: {req.shock!r}")
+    try:
+        levers = pol.clean_levers(req.levers)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return json.dumps({"levers": levers, "shock": req.shock, "shock_month": min(req.shock_month, req.months - 1),
+                       "months": req.months, "households": req.households, "seeds": req.seeds}, sort_keys=True)
+
+
+@lru_cache(maxsize=12)
+def _policy_sim(key: str) -> dict:
+    return pol.simulate(**json.loads(key))
+
+
+@lru_cache(maxsize=32)
+def _policy_robust(key: str) -> dict:
+    args = json.loads(key)
+    return pol.robustness(args["levers"], shock=args["shock"], shock_month=args["shock_month"], months=args["months"])
+
+
+@app.get("/api/policy/catalog")
+def policy_catalog():
+    return {**pol.catalog(), "sensitivity": _json("policy_sensitivity.json")}
+
+
+@app.post("/api/policy/simulate")
+async def policy_simulate(req: PolicyRequest):
+    key = _policy_key(req)
+    async with _sem:
+        sim = await asyncio.to_thread(_policy_sim, key)
+        out = pol.public(sim)
+        if req.robustness:
+            out["robustness"] = await asyncio.to_thread(_policy_robust, key)
+    return out
+
+
+@app.post("/api/policy/household")
+async def policy_household(req: HouseholdRequest):
+    key = _policy_key(req)
+    async with _sem:
+        sim = await asyncio.to_thread(_policy_sim, key)
+    try:
+        return pol.household(sim, req.age, req.income, req.tenure, req.savings, req.years, req.region_factor)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True, **{n: (DATA / n).exists() for n in
-                           ("grid.json", "sensitivity.json", "calibration.json", "onchain.json")}}
+                           ("grid.json", "sensitivity.json", "calibration.json", "onchain.json",
+                            "policy_sensitivity.json")}}

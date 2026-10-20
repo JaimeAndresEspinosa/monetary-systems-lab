@@ -307,6 +307,31 @@ class Params:
     shock_month: int = 24
     shock_size: float = 1.0
 
+    # Laboratorio de políticas (msl/policy.py). Los valores por defecto son la situación
+    # de partida y no cambian nada: el modelo da exactamente lo mismo que sin estas palancas.
+    # Las cantidades en euros son euros de hoy (se reescalan con el salario medio, SPAIN_WAGE).
+    wealth_tax: float = 0.0               # tipo anual adicional sobre el patrimonio neto que supera el umbral
+    wealth_tax_threshold: float = 700_000.0
+    wealth_tax_avoidance: float = 0.3     # parte de la base que se elude (traslados, sociedades, valoración)
+    benefit_elasticity: float = 0.3       # elasticidad del paro estructural a la generosidad de la prestación
+    smi_raise: float = 0.0                # subida del salario mínimo sobre el actual (0,1 = +10 %)
+    smi_kaitz: float = 0.62               # SMI / salario medio: 16.576 € (SMI 2025) / 26.949 € (INE 2023)
+    smi_elasticity: float = -0.2          # elasticidad del empleo de los afectados a su subida salarial
+    smi_pass_through: float = 0.75        # parte del coste que se traslada a precios (Harasztosi y Lindner, 2019)
+    smi_parttime_cover: float = 0.2       # de quienes ganan menos del SMI anual, parte que lo cobra por hora
+    almp_spending: float = 0.0            # gasto adicional en políticas activas de empleo (% del PIB)
+    almp_effectiveness: float = 0.8       # pp de paro estructural que baja cada 1 % del PIB (a 2 años)
+    permits_speed: float = 1.0            # multiplicador de la respuesta de la construcción (licencias)
+    public_housing: float = 0.0           # viviendas públicas nuevas al año por cada 1.000 hogares
+    social_rent: float = 0.5              # alquiler social / alquiler de mercado
+    rent_cap: float = 1.0                 # subida anual máxima del alquiler en contratos vigentes (1 = sin tope)
+    rent_cap_elasticity: float = 0.5      # pisos que se retiran del alquiler por cada 1 de diferencia con el mercado
+    first_buyer_aid: float = 0.0          # ayuda directa a la entrada (% del precio), menores de 36 años
+    first_buyer_ltv: float = 0.0          # financiación extra con aval público (ICO), menores de 36 años
+    gov_investment_share: float = 0.12    # parte de las compras públicas que es inversión (España ≈ 12 %)
+    public_capital_elasticity: float = 0.08  # elasticidad del PIB al capital público (Bom y Ligthart, 2014)
+    public_capital0: float = 0.5          # capital público inicial / PIB anual
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -322,6 +347,10 @@ class Params:
             raise ValueError(f"Crisis desconocida: {clean['shock']!r}")
         return cls(**clean)
 
+
+# Salario bruto medio mensual en España, en 12 pagas (INE, Encuesta Anual de Estructura
+# Salarial 2023: 26.949 € al año). Convierte los euros del modelo en euros de hoy.
+SPAIN_WAGE = 26_949.0 / 12
 
 # Límites para lo que acepta la API (evita simulaciones que tumben el servidor)
 LIMITS = {"households": (200, 5000), "months": (24, 240), "seeds": (1, 40)}

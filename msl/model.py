@@ -15,14 +15,17 @@ Cada mes:
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 
-from .config import SHOCKS, Params, Regime
+from .config import SHOCKS, SPAIN_WAGE, Params, Regime
 from .economy import Economy
 from .metrics import gini, top_share
 
 LOLR = {"discretionary"}                 # prestamista de última instancia: crea reservas a demanda
 ANCHORED = {"discretionary", "rule_2pct"}  # regímenes con objetivo de inflación creíble
+TODAY = Params()                         # valores de partida de las palancas de política
 
 
 def annuity(balance, rate_m, months):
@@ -35,11 +38,23 @@ def annuity(balance, rate_m, months):
 
 
 class Model:
-    def __init__(self, regime: Regime, params: Params | None = None):
+    def __init__(self, regime: Regime, params: Params | None = None, policy: dict | None = None,
+                 track: bool = False, crn: bool = False):
         self.target = regime
         self.r = Regime()  # el arranque siempre se hace con el sistema actual
         self.p = params or Params()
+        # medidas del laboratorio de políticas: se aplican al terminar el arranque, de modo que
+        # con la misma semilla los hogares de partida son idénticos con y sin la medida
+        self.policy = dict(policy or {})
+        unknown = set(self.policy) - set(Params.__dataclass_fields__)
+        if unknown:
+            raise ValueError(f"Palancas desconocidas: {sorted(unknown)}")
+        self.track = track
+        # números aleatorios comunes: tras el arranque, cada proceso aleatorio usa su propia
+        # secuencia, así que con y sin la medida la economía recibe los mismos shocks
+        self.crn = crn
         self.rng = np.random.default_rng(self.p.seed)
+        self.rs = dict.fromkeys(("spirits", "build", "hh", "jobs", "misc", "demo"), self.rng)
         self.e = Economy(self.p.households)
         self.t = 0
         self.recording = False
@@ -163,6 +178,26 @@ class Model:
         self.tax_evaded = 0.0
         self.demurrage_paid = 0.0
         self.real_mort_lr = p.neutral_rate + p.mortgage_spread
+        # Laboratorio de políticas: con los valores por defecto nada de esto cambia el modelo
+        # (y usa su propio generador aleatorio, para no alterar la secuencia del principal)
+        self.prng = np.random.default_rng(p.seed + 104_729)
+        self.zw = self.z                   # productividad que se paga (con el SMI)
+        self.smi_cost = 1.0                # coste laboral medio por el SMI (se traslada a precios)
+        self.job_u = None
+        self.almp_level = 0.0
+        self.pub_acc = 0.0
+        self.pub_pipeline: list[tuple[int, int]] = []
+        self.gov_houses = 0
+        self.public_tenant = np.zeros(n, dtype=bool)
+        self.guaranteed = np.zeros(n, dtype=bool)
+        self.rent_i = None
+        self.rent_eff = self.rent
+        self.withdrawn = 0.0               # parte de los pisos de alquiler retirados por el tope
+        self.was_renter = None
+        self.extra_Kg = 0.0
+        self.A_boost = 1.0
+        self.G_real = 0.0
+        self.inc12 = self.income.copy()    # renta bruta media de los últimos 12 meses
         self.e.take_flows()
 
     def _switch_regime(self):
@@ -170,6 +205,11 @@ class Model:
         toman las referencias con las que se normalizan todas las métricas."""
         e = self.e
         self.r = self.target
+        if self.policy:
+            self.p = replace(self.p, **self.policy)
+        if self.crn:
+            streams = np.random.SeedSequence([self.p.seed, 2026]).spawn(len(self.rs))
+            self.rs = {k: np.random.default_rng(s) for k, s in zip(self.rs, streams)}
         if self.r.banking == "full_reserve":
             # Transición del Chicago Plan: el banco central presta a los bancos las
             # reservas necesarias para respaldar el 100 % de los depósitos
@@ -194,12 +234,29 @@ class Model:
         nw = self.net_worth()
         self.initial_rank = nw.argsort().argsort() / (self.p.households - 1)
         self.wealth0_real = nw / self.P
+        self._start_policies(nw)
         e.take_flows()
 
     # ============================================================ utilidades
     @property
     def labor_force(self):
         return self.age < self.p.retirement_age
+
+    def nairu(self) -> float:
+        """Paro estructural: el natural, corregido por la generosidad de las prestaciones
+        y por las políticas activas de empleo."""
+        p = self.p
+        u = p.natural_unemployment
+        if p.benefit_ratio == TODAY.benefit_ratio and not self.almp_level:
+            return u
+        if p.benefit_ratio > 0:
+            u *= (p.benefit_ratio / TODAY.benefit_ratio) ** p.benefit_elasticity
+        u -= p.almp_effectiveness * self.almp_level
+        return float(np.clip(u, 0.02, 0.40))
+
+    def to_today_eur(self, x):
+        """Euros nominales del modelo → euros de hoy (sin inflación, al salario medio de España)."""
+        return x * (self.P_ref / self.P) * (SPAIN_WAGE / self.w_ref)
 
     def firm_value(self) -> float:
         """Valor de mercado de las empresas: beneficio descontado al tipo de interés
@@ -270,6 +327,8 @@ class Model:
         p, e, rng, n = self.p, self.e, self.rng, self.p.households
         t = self.t
         lf = self.labor_force
+        ustar = self.nairu()
+        self.zw = self._paid_z()
 
         # ---------------------------------------------- 1. tipos de interés
         pi_yoy = self.P / self.P_hist[-13] - 1
@@ -278,7 +337,7 @@ class Model:
             # de los saltos de márgenes (shocks de oferta como el energético)
             core = (1 + pi_yoy) / ((1 + self.mu) / (1 + self.mu_hist[-13])) - 1
             i = p.neutral_rate + core + 0.5 * (core - p.inflation_target) \
-                - 0.5 * (self.u - p.natural_unemployment)
+                - 0.5 * (self.u - ustar)
             i = max(0.0, i)
         else:
             # sin banco central que fije el precio del dinero, el tipo sale del mercado:
@@ -299,21 +358,26 @@ class Model:
         # ------------------------------------------ 2. emisión de dinero base
         base = e.cb_res_liab + e.cb_acct_liab
         if self.r.issuance == "discretionary":
-            g = 2.0 * (p.inflation_target - pi_yoy) + 1.0 * max(0.0, self.u - p.natural_unemployment - 0.02)
+            g = 2.0 * (p.inflation_target - pi_yoy) + 1.0 * max(0.0, self.u - ustar - 0.02)
             issue = base * float(np.clip(g, 0.0, 0.30)) / 12
         elif self.r.issuance == "rule_2pct":
             issue = base * (p.inflation_target + p.productivity_growth) / 12
         elif self.r.issuance == "gold":
-            issue = base * max(0.0, p.gold_growth + rng.normal(0, 0.01)) / 12
+            issue = base * max(0.0, p.gold_growth + self.rs["misc"].normal(0, 0.01)) / 12
         else:
             issue = self.base0 * p.fixed_initial_issuance / 12 * 0.5 ** (t // p.halving_months)
         gov_extra = self._inject(issue)
 
         # ----------------------------------------------- 3. empleo y salarios
-        demand_ratio = self.y_expected / max(self.y_potential / (1 - p.natural_unemployment), 1)
+        demand_ratio = self.y_expected / max(self.y_potential / (1 - ustar), 1)
         target_n = int(round(min(0.98, demand_ratio) * lf.sum()))
-        self._adjust_employment(target_n)
-        wages = self.w * self.z * self.employed
+        blocked = self._smi_priced_out(lf)
+        if blocked is not None:
+            # los empleos que el SMI deja sin rentabilidad desaparecen (no se dan a otros)
+            target_n -= int(round(blocked.sum() * (1 - self.u)))
+            self.employed &= ~blocked
+        self._adjust_employment(target_n, blocked)
+        wages = self.w * self.zw * self.employed
         bill = float(wages.sum())
         if e.firm_dep < bill:
             need = bill - e.firm_dep
@@ -325,12 +389,14 @@ class Model:
                     e.lend_firm(room)
                 # no puede pagar a todos: despide hasta poder pagar
                 affordable = max(0.0, e.firm_dep) / max(bill, 1)
-                keep = rng.random(n) < affordable
+                keep = self.rs["misc"].random(n) < affordable
                 self.employed &= keep
-                wages = self.w * self.z * self.employed
+                wages = self.w * self.zw * self.employed
                 bill = float(wages.sum())
+        if blocked is not None:
+            self.smi_cost = bill / max(self.w * float((self.z * self.employed).sum()), 1)
         e.pay("firm", "hh", "Salarios", dst_vec=wages)
-        self.last_wage = np.where(self.employed, self.w * self.z, self.last_wage)
+        self.last_wage = np.where(self.employed, self.w * self.zw, self.last_wage)
 
         # ---------------------------------- 4. transferencias y rentas del capital
         pensions = np.where(~lf, p.pension_ratio * self.w * self.z, 0.0)
@@ -393,6 +459,12 @@ class Model:
                 self.houses[idx] -= 1
                 self.bank_houses += 1
                 loss -= self.Ph
+            if self.guaranteed[idx]:
+                # aval público (tipo ICO): el Estado cubre la parte financiada por encima del LTV
+                cover = min(max(0.0, loss), p.first_buyer_ltv * self.Ph)
+                e.pay("gov", "bank", "Aval público hipotecario", amount=cover)
+                loss -= cover
+                self.guaranteed[idx] = False
             losses += max(0.0, loss)
             self.arrears[idx] = 0
             self.months_left[idx] = 0
@@ -406,14 +478,21 @@ class Model:
         # alquileres: los inquilinos pagan a los caseros
         renters = self.houses == 0
         landlord_w = np.maximum(self.houses - 1, 0).astype(float)
-        shortage = renters.sum() / max(1.0, landlord_w.sum() + self.bank_houses)
+        tenants = self._allocate_public_housing(renters)
+        shortage = tenants.sum() / max(1.0, landlord_w.sum() * (1 - self.withdrawn) + self.bank_houses)
         self.rent = self.rent0 * (self.w / p.wage0) * float(np.clip(shortage, 0.7, 1.6)) ** 0.5
-        rent_vec = np.where(renters, np.minimum(self.rent, np.maximum(e.dep, 0)), 0.0)
+        due = self._contract_rents(tenants)
+        rent_vec = np.where(tenants, np.minimum(due, np.maximum(e.dep, 0)), 0.0)
         total_rent = rent_vec.sum()
         if landlord_w.sum() > 0 and total_rent > 0:
             to_vec = total_rent * landlord_w / landlord_w.sum()
             e.pay("hh", "hh", "Alquileres", src_vec=rent_vec, dst_vec=to_vec)
             cap_income += to_vec
+        social = np.zeros(n)
+        if self.gov_houses:
+            social = np.where(self.public_tenant,
+                              np.minimum(p.social_rent * self.rent, np.maximum(e.dep, 0)), 0.0)
+            e.pay("hh", "gov", "Alquiler social", src_vec=social)
 
         # impuesto sobre la renta (progresivo)
         gross = wages + pensions + benefits + cap_income
@@ -430,7 +509,9 @@ class Model:
         tax = np.minimum(avg_rate * taxable, np.maximum(e.dep, 0))
         self.tax_evaded = float((avg_rate * hidden).sum())
         e.pay("hh", "gov", "IRPF y cotizaciones", src_vec=tax)
+        wtax = self._wealth_tax()
         self.income = gross
+        self.inc12 += (gross - self.inc12) / 12
 
         # --------------------------------------------- 6. consumo y gasto público
         rank_inc = gross.argsort().argsort() / (n - 1)
@@ -450,19 +531,22 @@ class Model:
         G = p.gov_spending_share * self.y_potential * self.P * self.gov_cut
         if self.r.fiscal == "balanced" and self.rev_ema is not None:
             G = float(np.clip(self.rev_ema - self.transfer_ema, 0.5 * G, 1.1 * G))
+        self.G_real = G / self.P
         # lo que se oxida se gasta en obra pública el mismo mes (como en Wörgl, 1932)
         G += gov_extra + self.demurrage_paid
         e.pay("gov", "firm", "Compras públicas", amount=G)
+        policy_G, public_started = self._policy_spending()
 
         # --------------------------------------------------- 7. vivienda
         built, house_sales = self._housing_market(r_mort, lf)
+        built += public_started
 
         # IVA: parte de lo que pagan los consumidores va al Estado
         vat = float(cons.sum()) * p.vat / (1 + p.vat)
         e.pay("firm", "gov", "IVA", amount=vat)
 
         # beneficio y su impuesto
-        revenue = float(cons.sum()) - vat + G + house_sales
+        revenue = float(cons.sum()) - vat + G + policy_G + house_sales
         profit = revenue - bill - firm_int
         ctax = p.corporate_tax * max(0.0, profit)
         ctax = min(ctax, max(0.0, e.firm_dep))
@@ -480,7 +564,8 @@ class Model:
             e.repay_firm(min(0.05 * (e.firm_loan - target_debt), e.firm_dep - 2 * bill))
 
         # medias de 12 meses de lo que entra y sale del Estado (para la regla fiscal)
-        revenue_gov = float(tax.sum()) + vat + ctax + self.demurrage_paid
+        revenue_gov = (float(tax.sum()) + vat + ctax + self.demurrage_paid
+                       + float(wtax.sum() + social.sum()))
         transfers = (float(pensions.sum() + benefits.sum() + coupons_hh.sum())
                      + e.bank_bonds * r_bond)
         if self.rev_ema is None:
@@ -493,6 +578,8 @@ class Model:
         self._bank_liquidity_and_solvency()
         if self.r.banking == "full_reserve":
             self._investment_accounts()
+        if self.track and self.recording:
+            self._track_step(gross, tax + wtax, rent_vec + social + int_paid + princ)
 
         # ----------------------------------- 9. precios, salarios, expectativas
         # inversión empresarial: se produce dentro del sector empresas (sin pago
@@ -500,23 +587,25 @@ class Model:
         real_rate = i - self.pi_e
         inv_factor = float(np.clip(1 - p.investment_rate_sens * (real_rate - p.neutral_rate), 0.5, 1.5))
         # "animal spirits": la confianza empresarial fluctúa (proceso AR(1)) y genera ciclos
-        self.animal = p.spirits_rho * self.animal + p.spirits_sd * rng.normal()
+        self.animal = p.spirits_rho * self.animal + p.spirits_sd * self.rs["spirits"].normal()
         investment = (p.investment_share * self.y_potential * inv_factor * shock["inv"]
                       * float(np.exp(self.animal)))
         self.K = self.K * (1 - p.depreciation / 12) + investment
         # la obra de una vivienda se reparte a lo largo de ~1 año de producción
         self.construction = 0.92 * self.construction + 0.08 * built * 0.75 * p.house_price0
-        real_sales = (float(cons.sum()) - vat + G) / self.P + self.construction + investment
+        real_sales = (float(cons.sum()) - vat + G + policy_G) / self.P + self.construction + investment
         self.y_expected = 0.85 * self.y_expected + 0.15 * real_sales
         self.u = 1 - (self.employed & lf).sum() / max(1, lf.sum())
         gap = float(np.clip(real_sales / max(self.y_potential, 1) - 1, -0.3, 0.3))
         self.mu = 0.9 * self.mu + 0.1 * p.markup * (1 + 1.5 * gap)
         self.mu = max(self.mu, shock["mu_floor"])
-        wage_growth = self.pi_e + p.productivity_growth + p.phillips * (p.natural_unemployment - self.u)
+        wage_growth = self.pi_e + p.productivity_growth + p.phillips * (ustar - self.u)
         wage_growth = max(p.wage_floor, wage_growth)
         self.w *= 1 + wage_growth / 12
         self.A *= (1 + p.productivity_growth / 12) * shock["A"]
-        self.P = (1 + self.mu) * self.w / self.A
+        self._public_capital()
+        cost = 1 + p.smi_pass_through * (self.smi_cost - 1)   # parte del coste del SMI que va a precios
+        self.P = (1 + self.mu) * self.w * cost / self.A
         self.P_hist.append(self.P)
         self.mu_hist.append(self.mu)
         pi_yoy = self.P / self.P_hist[-13] - 1
@@ -524,7 +613,7 @@ class Model:
         adaptive = 0.92 * self.pi_e + 0.08 * pi_yoy
         w = p.credibility
         self.pi_e = w * self.inflation_anchor() + (1 - w) * adaptive
-        self.y_potential = self.A * float((self.z * lf).sum()) * (1 - p.natural_unemployment)
+        self.y_potential = self.A * float((self.z * lf).sum()) * (1 - self.nairu())
 
         self._demography()
         if self.recording:
@@ -649,21 +738,29 @@ class Model:
         self.new_money_deciles += np.bincount(dec, weights=vec, minlength=10)
         self.new_money_to["Hogares"] += float(vec.sum())
 
-    def _adjust_employment(self, target_n: int):
+    def _adjust_employment(self, target_n: int, blocked: np.ndarray | None = None):
         lf = self.labor_force
         self.employed &= lf
         cur = int(self.employed.sum())
         max_move = max(1, int(0.04 * lf.sum()))
+        # con números aleatorios comunes, se contrata (o despide) por orden de una clave al azar
+        # de cada hogar: si la medida cambia cuántos, solo cambia quién está en el margen
+        keys = self.rs["jobs"].random(self.p.households) if self.crn and self.recording else None
         if target_n > cur:
-            pool = np.flatnonzero(lf & ~self.employed)
+            free = lf & ~self.employed
+            pool = np.flatnonzero(free if blocked is None else free & ~blocked)
             k = min(len(pool), target_n - cur, max_move)
             if k > 0:
-                self.employed[self.rng.choice(pool, k, replace=False)] = True
+                pick = (pool[np.argsort(keys[pool])[:k]] if keys is not None
+                        else self.rs["misc"].choice(pool, k, replace=False))
+                self.employed[pick] = True
         elif target_n < cur:
             pool = np.flatnonzero(self.employed)
             k = min(len(pool), cur - target_n, max_move)
             if k > 0:
-                self.employed[self.rng.choice(pool, k, replace=False)] = False
+                pick = (pool[np.argsort(keys[pool])[:k]] if keys is not None
+                        else self.rs["misc"].choice(pool, k, replace=False))
+                self.employed[pick] = False
 
     def _housing_market(self, r_mort: float, lf: np.ndarray) -> tuple[int, float]:
         p, e, rng, n = self.p, self.e, self.rng, self.p.households
@@ -673,32 +770,45 @@ class Model:
         # construcción: más cuanto mayor es el margen sobre el coste
         cost = 0.75 * p.house_price0 * self.P
         margin = Ph / cost - 1
-        built = int(rng.poisson(max(0.0, n * p.construction_rate * margin)))
+        rate = p.construction_rate * p.permits_speed   # licencias más rápidas: más oferta con el mismo margen
+        built = int(self.rs["build"].poisson(max(0.0, n * rate * margin)))
         self.firm_houses += built
 
         # compradores
         renters = (self.houses == 0) & lf & self.employed & (self.age < 50)
-        first = renters & (rng.random(n) < 0.03)
-        exp_return = 12 * self.rent / Ph + growth_exp
+        hh = self.rs["hh"]
+        first = renters & (hh.random(n) < 0.03)
+        exp_return = 12 * self.rent_eff / Ph + growth_exp
         invest_p = 0.015 if exp_return > 12 * r_mort + 0.01 else 0.003
-        investors = (self.houses >= 1) & (e.dep > 0.5 * Ph) & (rng.random(n) < invest_p)
+        investors = (self.houses >= 1) & (e.dep > 0.5 * Ph) & (hh.random(n) < invest_p)
         buyers = np.flatnonzero(first | investors)
-        rng.shuffle(buyers)
+        order = hh.random(n) if self.crn and self.recording else None
+        if order is None:
+            self.rs["misc"].shuffle(buyers)
+        else:
+            buyers = buyers[np.argsort(order[buyers])]
 
         # vendedores
         extra = np.maximum(self.houses - 1, 0)
         sell_p = 0.006 if exp_return > 12 * r_mort else 0.012
         old = self.age > 80
-        sellers = list(np.flatnonzero((extra > 0) & ((rng.random(n) < sell_p) | old)))
-        rng.shuffle(sellers)
+        sellers = np.flatnonzero((extra > 0) & ((hh.random(n) < sell_p) | old))
+        if order is None:
+            self.rs["misc"].shuffle(sellers)
+        else:
+            sellers = sellers[np.argsort(order[sellers])]
+        sellers = list(sellers)
         listings = len(sellers) + self.bank_houses + self.firm_houses
 
         income_m = np.maximum(self.income, self.w * self.z * self.employed)
         deals, sales_firm, demand = 0, 0.0, 0
         for b in buyers:
-            own = min(0.8 * max(e.dep[b], 0.0), Ph)
+            # ayudas a la primera vivienda para menores de 36 años: entrada y aval público
+            young = self.houses[b] == 0 and self.age[b] < 36
+            aid = p.first_buyer_aid * Ph if young else 0.0
+            own = min(0.8 * max(e.dep[b], 0.0) + aid, Ph)
             loan = Ph - own
-            if loan > p.ltv * Ph:
+            if loan > (p.ltv + (p.first_buyer_ltv if young else 0.0)) * Ph:
                 continue
             if loan > 0:
                 pay = float(annuity(np.array([loan]), r_mort, np.array([p.mortgage_years * 12]))[0])
@@ -707,9 +817,14 @@ class Model:
             demand += 1
             if deals >= listings:
                 continue
+            if aid > 0:
+                gv = np.zeros(n)
+                gv[b] = aid
+                e.pay("gov", "hh", "Ayuda a la compra de vivienda", dst_vec=gv)
             if loan > 0:
                 e.lend_hh(b, loan)
                 self.months_left[b] = p.mortgage_years * 12
+                self.guaranteed[b] = loan > p.ltv * Ph + 1e-6
             vec = np.zeros(n)
             vec[b] = Ph
             if self.firm_houses > 0:
@@ -813,10 +928,158 @@ class Model:
         if len(dead):
             # herencia dinástica: el patrimonio pasa a un heredero de 20 años
             self.age[dead] = 20.0
-            z = self.rng.lognormal(0.0, 0.5, len(dead))
+            z = self.rs["demo"].lognormal(0.0, 0.5, len(dead))
             self.z[dead] = z / np.exp(0.125)
             self.employed[dead] = False
             self.last_wage[dead] = self.w * self.z[dead]
+            self.public_tenant[dead] = False
+            if self.track and self.recording:
+                self.tr["dead"][dead] = True
+
+    # ================================================ laboratorio de políticas
+    def _start_policies(self, nw: np.ndarray):
+        """Estado de las medidas al empezar a aplicarlas (fin del arranque)."""
+        p, n = self.p, self.p.households
+        self.job_u = self.prng.random(n)           # umbral de cada empleo frente a una subida del SMI
+        self.smi_u = self.prng.random(n)           # quién de los que cobran menos del SMI lo cobra por hora
+        self.rent_i = np.full(n, self.rent)        # alquiler de cada contrato (con tope)
+        self.was_renter = self.houses == 0
+        self.Kg_ref = p.public_capital0 * 12 * self.y_expected
+        if self.track:
+            e, f = self.e, SPAIN_WAGE / self.w_ref
+            fin = e.dep + e.inv + e.cbdc + e.bonds + self.shares * (self.firm_value() + self.bank_value())
+            self.tr = {
+                "age": self.age.copy(), "income": self.inc12 * f, "fin": fin * f, "wealth": nw * f,
+                "houses": self.houses.copy(), "mortgage": e.loan > 1e-6, "renter": self.houses == 0,
+                "gross": np.zeros(n), "disp": np.zeros(n), "housing": np.zeros(n),
+                "unemp": np.zeros(n), "lf": np.zeros(n), "own_month": np.full(n, -1),
+                "dead": np.zeros(n, dtype=bool), "months": 0,
+            }
+
+    def _paid_z(self) -> np.ndarray:
+        """Salario relativo que se paga con el SMI. Quien está entre el SMI actual y el nuevo
+        pasa al nuevo. De quienes ganan menos que el SMI anual (jornadas parciales), solo una
+        parte cobra el SMI por hora y sube en la misma proporción; el resto ya cobra más por hora."""
+        p = self.p
+        r = p.smi_raise
+        if r == 0 or not self.recording:
+            return self.z
+        k0 = p.smi_kaitz
+        low = np.where(self.smi_u < p.smi_parttime_cover, self.z * (1 + r), self.z)
+        return np.where(self.z < k0, low, np.maximum(self.z, k0 * (1 + r)))
+
+    def _smi_priced_out(self, lf: np.ndarray) -> np.ndarray | None:
+        """Empleos que dejan de ser rentables con el nuevo SMI: con elasticidad ε, de los
+        afectados por una subida g se mantiene una parte (1 + g)^ε."""
+        if self.zw is self.z or self.job_u is None:
+            return None
+        keep = (self.zw / self.z) ** self.p.smi_elasticity
+        return lf & (self.job_u > keep)
+
+    def _wealth_tax(self) -> np.ndarray:
+        p, e = self.p, self.e
+        if p.wealth_tax <= 0:
+            return np.zeros(p.households)
+        threshold = p.wealth_tax_threshold / SPAIN_WAGE * self.w   # el umbral se indexa a los salarios
+        base = np.maximum(self.net_worth() - threshold, 0) * (1 - p.wealth_tax_avoidance)
+        wtax = np.minimum(p.wealth_tax / 12 * base, np.maximum(e.dep, 0))
+        e.pay("hh", "gov", "Impuesto sobre el patrimonio", src_vec=wtax)
+        return wtax
+
+    def _policy_spending(self) -> tuple[float, int]:
+        """Políticas activas de empleo y construcción de vivienda pública (pagos del Estado
+        a las empresas). Devuelve el gasto y las viviendas públicas que se empiezan."""
+        p, e = self.p, self.e
+        spent, started = 0.0, 0
+        if p.almp_spending > 0 or self.almp_level > 0:
+            # el efecto sobre el paro estructural tarda ~2 años en llegar
+            self.almp_level += (p.almp_spending - self.almp_level) / 24
+            spent += e.pay("gov", "firm", "Políticas activas de empleo",
+                           amount=p.almp_spending * self.y_potential * self.P)
+        if p.public_housing > 0:
+            self.pub_acc += p.public_housing / 1000 / 12 * p.households
+            started = int(self.pub_acc)
+            self.pub_acc -= started
+            if started:
+                spent += e.pay("gov", "firm", "Construcción de vivienda pública",
+                               amount=started * 0.75 * p.house_price0 * self.P)
+                self.pub_pipeline.append((self.t + 24, started))   # se entregan a los 2 años
+        if self.pub_pipeline:
+            self.gov_houses += sum(k for t0, k in self.pub_pipeline if t0 <= self.t)
+            self.pub_pipeline = [(t0, k) for t0, k in self.pub_pipeline if t0 > self.t]
+        return spent, started
+
+    def _allocate_public_housing(self, renters: np.ndarray) -> np.ndarray:
+        """Asigna la vivienda pública libre a los inquilinos de menor renta. Devuelve los
+        hogares que alquilan en el mercado privado."""
+        if not self.gov_houses:
+            return renters
+        self.public_tenant &= renters
+        free = self.gov_houses - int(self.public_tenant.sum())
+        if free > 0:
+            cand = np.flatnonzero(renters & ~self.public_tenant)
+            self.public_tenant[cand[np.argsort(self.inc12[cand])[:free]]] = True
+        return renters & ~self.public_tenant
+
+    def _contract_rents(self, tenants: np.ndarray):
+        """Alquiler que paga cada inquilino. Sin tope, el de mercado. Con tope, cada contrato
+        vigente sube como mucho el tope al año; los contratos nuevos (quien empieza a alquilar
+        o se muda, ~18 % al año) se firman al precio de mercado, que sube si los caseros
+        retiran pisos del alquiler."""
+        p = self.p
+        if p.rent_cap >= 1 or self.rent_i is None:
+            self.rent_eff = self.rent
+            return self.rent
+        fresh = tenants & (~self.was_renter | (self.prng.random(p.households) < 0.015))
+        growth = (1 + p.rent_cap) ** (1 / 12)
+        self.rent_i = np.where(fresh, self.rent, np.minimum(self.rent, self.rent_i * growth))
+        self.was_renter = tenants.copy()
+        self.rent_eff = float(self.rent_i[tenants].mean()) if tenants.any() else self.rent
+        # parte de los caseros retira el piso del alquiler residencial (venta, temporada, turístico)
+        # cuando lo que cobra queda por debajo del mercado; tarda ~1 año en notarse
+        target = min(0.5, p.rent_cap_elasticity * max(0.0, 1 - self.rent_eff / self.rent))
+        self.withdrawn += (target - self.withdrawn) / 12
+        return self.rent_i
+
+    def _public_capital(self):
+        """Inversión pública: el capital público adicional sube la productividad con
+        elasticidad θ (A ∝ K_g^θ)."""
+        p = self.p
+        if not self.recording or (p.gov_investment_share == TODAY.gov_investment_share and not self.extra_Kg):
+            return
+        self.extra_Kg = (self.extra_Kg * (1 - 0.04 / 12)
+                         + (p.gov_investment_share - TODAY.gov_investment_share) * self.G_real)
+        boost = max(0.5, 1 + self.extra_Kg / self.Kg_ref) ** p.public_capital_elasticity
+        self.A *= boost / self.A_boost
+        self.A_boost = boost
+
+    def _track_step(self, gross: np.ndarray, taxes: np.ndarray, housing: np.ndarray):
+        """Lo que le pasa a cada hogar, en euros de hoy (para «¿Y a mí cómo me afecta?»)."""
+        tr, f = self.tr, self.to_today_eur(1.0)
+        lf = self.labor_force
+        tr["gross"] += gross * f
+        tr["disp"] += (gross - taxes) * f
+        tr["housing"] += housing * f
+        tr["unemp"] += lf & ~self.employed
+        tr["lf"] += lf
+        bought = tr["renter"] & (tr["own_month"] < 0) & (self.houses > 0)
+        tr["own_month"][bought] = self.t
+        tr["months"] += 1
+
+    def household_panel(self) -> dict:
+        """Situación de cada hogar al empezar la medida y sus resultados al final."""
+        tr, f = self.tr, self.to_today_eur(1.0)
+        m = max(1, tr["months"])
+        retired = ~self.labor_force
+        pension = self.p.pension_ratio * self.z * self.w * f   # la de hoy o la que tendría al jubilarse
+        return {
+            **{k: tr[k] for k in ("age", "income", "fin", "wealth", "houses", "mortgage", "renter",
+                                  "own_month", "dead")},
+            "disp": tr["disp"] / m, "gross_avg": tr["gross"] / m, "housing": tr["housing"] / m,
+            "burden": tr["housing"] / np.maximum(tr["disp"], 1.0),
+            "unemp": tr["unemp"] / np.maximum(tr["lf"], 1), "wealth_end": self.net_worth() * f,
+            "pension": pension, "retired_end": retired, "months": m,
+        }
 
     def _record(self, pi_yoy: float, real_sales: float, issue: float):
         e, p = self.e, self.p
@@ -854,6 +1117,12 @@ class Model:
         self.record("new_money", issue * 12 / max(gdp_y, 1))
         self.record("bailouts", self.bailouts / ref)
         self.record("sfc_error", e.check())
+        if self.track:
+            # series internas del laboratorio de políticas (no salen en result())
+            tenants = (self.houses == 0) & ~self.public_tenant
+            self.record("_rent_paid", self.rent_eff / max(1.0, median_wage))
+            self.record("_public_housing", self.gov_houses / p.households)
+            self.record("_tenants", float(tenants.mean()))
         self.last_flows = e.take_flows()
 
     # =========================================================== resultados
@@ -867,7 +1136,8 @@ class Model:
         hist = {k: v for k, v in self.history.items() if not k.startswith("_")}
         house_value = {"hh": float(self.houses.sum()) * self.Ph,
                        "bank": self.bank_houses * self.Ph,
-                       "firm": self.firm_houses * self.Ph}
+                       "firm": self.firm_houses * self.Ph,
+                       "gov": self.gov_houses * self.Ph}
         bs = self.e.balance_sheet(house_value, self.firm_value())
         flows = [{"from": k[0], "to": k[1], "purpose": k[2], "amount": v}
                  for k, v in sorted(self.last_flows.items(), key=lambda kv: -kv[1])]

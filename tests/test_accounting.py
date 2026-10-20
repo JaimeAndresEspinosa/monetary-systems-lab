@@ -113,3 +113,56 @@ def test_privacy_changes_tax_evasion():
             m.step()
         gaps[privacy] = np.mean(m.history["tax_gap"])
     assert gaps["anonymous"] > gaps["mixed"] > gaps["traceable"]
+
+
+# ------------------------------------------------------ laboratorio de políticas
+from msl.policy import ELASTICITIES, LEVERS  # noqa: E402
+
+POLICY = Params(households=300, months=48, burn_in=12, shock_month=12)
+
+
+def _extremes():
+    cases = []
+    for key, spec in LEVERS.items():
+        values = spec.get("choices") or [spec["min"], spec["max"]]
+        for v in (min(values), max(values)):
+            levers = {key: v}
+            if spec.get("sub"):                       # p. ej. el umbral solo importa con el impuesto activo
+                levers[spec["sub"]] = LEVERS[spec["sub"]]["max"]
+            if spec.get("elasticity"):
+                for end in ("lo", "hi"):
+                    cases.append(pytest.param({**levers, spec["elasticity"]: ELASTICITIES[spec["elasticity"]][end]},
+                                              id=f"{key}={v}+{spec['elasticity']}={end}"))
+            else:
+                cases.append(pytest.param(levers, id=f"{key}={v}"))
+    lo = {k: (min(s["choices"]) if s.get("choices") else s["min"]) for k, s in LEVERS.items()}
+    hi = {k: (max(s["choices"]) if s.get("choices") else s["max"]) for k, s in LEVERS.items()}
+    cases += [pytest.param(lo, id="all-min"), pytest.param(hi, id="all-max"),
+              pytest.param({**hi, "rent_cap": 0.0}, id="all-max+rent-freeze")]
+    return cases
+
+
+@pytest.mark.parametrize("levers", _extremes())
+def test_every_policy_lever_at_its_extremes_is_stock_flow_consistent(levers):
+    for p in (POLICY, replace(POLICY, shock="banking")):
+        m = Model(Regime(), p, policy=levers, track=True, crn=True)
+        for _ in range(p.months):
+            m.step()
+            assert m.e.check() < 1e-9, f"descuadre en el mes {m.t} ({p.shock})"
+        res = m.result()
+        rows = {r["key"]: r for r in res["balance_sheet"]["rows"]}
+        # la vivienda pública es un activo real del Estado: la riqueza neta total sigue siendo igual a las viviendas
+        assert rows["net"]["total"] == pytest.approx(rows["houses"]["total"], rel=1e-9)
+
+
+def test_levers_at_todays_values_leave_the_model_exactly_unchanged():
+    p = Params(households=400, months=36, burn_in=12, shock="pandemic", shock_month=6)
+    today = Params().to_dict()
+    defaults = {k: today[k] for k in list(LEVERS) + list(ELASTICITIES)}
+    ref = Model(Regime(), p)
+    for _ in range(p.months):
+        ref.step()
+    for m in (Model(Regime(), p, policy=defaults), Model(Regime(), p, track=True)):
+        for _ in range(p.months):
+            m.step()
+        assert m.result()["series"] == ref.result()["series"]

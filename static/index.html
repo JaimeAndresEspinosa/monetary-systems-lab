@@ -25,6 +25,7 @@
     </a>
     <nav class="mainnav" aria-label="Secciones">
       <a href="#lab" data-view="lab" class="active" data-i18n="nav.lab">Laboratorio</a>
+      <a href="#policy" data-view="policy" data-i18n="nav.policy">Políticas</a>
       <a href="#compare" data-view="compare" data-i18n="nav.compare">Comparar</a>
       <a href="#explore" data-view="explore" data-i18n="nav.explore">Explorador</a>
       <a href="#sensitivity" data-view="sensitivity" data-i18n="nav.sens">Sensibilidad</a>
@@ -165,6 +166,138 @@
       </div>
     </div>
     <div class="card empty" id="lab-empty" data-i18n-html="lab.empty">Elige un sistema y pulsa <b>Simular</b>.</div>
+  </section>
+
+  <!-- ============================================================ POLÍTICAS -->
+  <section id="view-policy" class="view">
+    <div class="hero">
+      <div class="eyebrow" data-i18n="pol.eyebrow">Laboratorio de políticas</div>
+      <h1 data-i18n="pol.title">¿Qué pasaría si…? Prueba medidas para España y mira a quién afectan</h1>
+      <p data-i18n="pol.lead">Impuestos, pensiones, salario mínimo, vivienda y gasto público, aplicados sobre la economía de hoy (BCE, bancos, reserva fraccionaria). Cada medida se simula dos veces con los mismos hogares y la misma suerte, con y sin ella, para aislar su efecto. Ninguna medida es «la mejor»: todas tienen ganadores y perdedores, y aquí se ven.</p>
+    </div>
+
+    <div class="section-head" style="margin-top:0">
+      <div>
+        <h2 data-i18n="pol.presets">Medidas de ejemplo</h2>
+        <p data-i18n="pol.presets.sub">Cada una con lo que dice la evidencia y sus límites. Elige una o mueve tú las palancas.</p>
+      </div>
+    </div>
+    <div class="pol-presets" id="pol-presets"></div>
+    <div class="card card-pad pol-info" id="pol-preset-info" hidden></div>
+
+    <div class="section">
+      <div class="section-head">
+        <div>
+          <h2 data-i18n="pol.levers">Palancas</h2>
+          <p data-i18n="pol.levers.sub">La marca indica el valor de hoy. Cada palanca dice cuánto se puede fiar uno del modelo y en qué evidencia se apoya; abre «Evidencia y supuestos» para ver y cambiar el supuesto clave.</p>
+        </div>
+        <button class="btn small" id="pol-reset" data-i18n="pol.reset">Volver a hoy</button>
+      </div>
+      <div class="pol-levers" id="pol-levers"></div>
+    </div>
+
+    <div class="grid-2 section">
+      <div class="card card-pad">
+        <h3 class="pol-h3" data-i18n="pol.me.title">Tu hogar (para «¿Y a mí cómo me afecta?»)</h3>
+        <p class="t2 pol-small" data-i18n="pol.me.sub">Se buscan los hogares simulados más parecidos al tuyo y se comparan sus resultados con y sin la medida. No se guarda nada.</p>
+        <div class="pol-form" id="pol-me-form">
+          <label class="ctl"><span data-i18n="pol.me.age">Edad</span><input type="number" id="me-age" min="18" max="80" step="1" value="25"></label>
+          <label class="ctl"><span data-i18n="pol.me.income">Ingresos brutos al mes (€, 12 pagas)</span><input type="number" id="me-income" min="0" max="100000" step="50" value="2500"></label>
+          <label class="ctl"><span data-i18n="pol.me.tenure">Vivienda</span>
+            <select id="me-tenure">
+              <option value="renter" data-i18n="pol.me.renter">Vivo de alquiler</option>
+              <option value="mortgage" data-i18n="pol.me.mortgage">Propietario con hipoteca</option>
+              <option value="outright" data-i18n="pol.me.outright">Propietario sin hipoteca</option>
+            </select>
+          </label>
+          <label class="ctl"><span data-i18n="pol.me.savings">Ahorros (€)</span><input type="number" id="me-savings" min="0" step="500" value="8000"></label>
+          <label class="ctl"><span data-i18n="pol.me.region">Zona (precio de la vivienda)</span>
+            <select id="me-region">
+              <option value="1" data-i18n="pol.me.r1">Media de España</option>
+              <option value="1.5" data-i18n="pol.me.r15">Madrid o Barcelona (≈ ×1,5)</option>
+              <option value="1.25" data-i18n="pol.me.r125">Otra zona cara (≈ ×1,25)</option>
+              <option value="0.8" data-i18n="pol.me.r08">Ciudad pequeña (≈ ×0,8)</option>
+              <option value="0.6" data-i18n="pol.me.r06">Zona rural (≈ ×0,6)</option>
+            </select>
+          </label>
+          <label class="ctl"><span data-i18n="pol.me.years">Comprar casa en</span>
+            <select id="me-years"><option value="3">3</option><option value="5" selected>5</option><option value="10">10</option></select>
+          </label>
+        </div>
+        <p class="muted pol-small" style="margin:10px 0 0" data-i18n="pol.me.note">Factores de zona orientativos (alquiler respecto a la media nacional); el modelo tiene un solo mercado de vivienda y solo los usa para escalar tu gasto en vivienda.</p>
+      </div>
+      <div class="card card-pad">
+        <h3 class="pol-h3" data-i18n="pol.run.title">Simular</h3>
+        <div class="runbar" style="margin-top:6px">
+          <label class="ctl"><span data-i18n="ctl.shock">Crisis</span><select id="pol-shock"></select></label>
+          <label class="ctl"><span data-i18n="ctl.horizon">Horizonte</span>
+            <select id="pol-months"><option value="60">5 años</option><option value="120" selected>10 años</option><option value="180">15 años</option></select>
+          </label>
+          <label class="ctl"><span data-i18n="ctl.seeds">Simulaciones</span>
+            <select id="pol-seeds"><option value="4" selected>4</option><option value="8">8</option></select>
+          </label>
+          <label class="ctl"><span data-i18n="ctl.households">Hogares</span>
+            <select id="pol-households"><option value="1500" selected>1.500</option><option value="3000">3.000</option></select>
+          </label>
+        </div>
+        <p class="t2 pol-small" id="pol-summary-levers" style="margin:12px 0 0"></p>
+        <div class="runbar">
+          <span class="spacer"></span>
+          <button class="btn primary" id="pol-run">
+            <svg viewBox="0 0 24 24" width="15" height="15"><path d="M7 4v16l13-8z" fill="currentColor"/></svg>
+            <span data-i18n="pol.run">Simular la medida</span>
+          </button>
+        </div>
+        <div class="runinfo" id="pol-runinfo"></div>
+      </div>
+    </div>
+
+    <div class="empty" id="pol-empty" data-i18n-html="pol.empty">Elige una <b>medida de ejemplo</b> o mueve alguna palanca y pulsa <b>Simular la medida</b>.</div>
+
+    <div id="pol-results" hidden>
+      <div class="section">
+        <div class="section-head"><div><h2 data-i18n="pol.tradeoffs">En resumen: qué se gana y qué se pierde</h2>
+          <p data-i18n="pol.tradeoffs.sub">Diferencia entre la economía con la medida y sin ella (mismos hogares, misma suerte). Mediana de las simulaciones; entre paréntesis, el rango 10–90 %.</p></div></div>
+        <div class="card card-pad pol-tradeoffs" id="pol-tradeoffs"></div>
+        <div class="kpis pol-kpis" id="pol-kpis" style="margin-top:12px"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><div><h2 data-i18n="pol.me.h2">¿Y a mí cómo me afecta?</h2>
+          <p id="pol-me-sub"></p></div>
+          <button class="btn small" id="pol-me-update" data-i18n="pol.me.update">Actualizar con mis datos</button></div>
+        <div class="pol-me" id="pol-me"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><div><h2 data-i18n="pol.who">Quién gana y quién pierde</h2>
+          <p data-i18n="pol.who.sub">Cambio medio en cada grupo (los grupos se forman con la situación de cada hogar al empezar la medida). Barra: mediana de las simulaciones; línea fina: rango 10–90 %.</p></div>
+          <div class="seg" id="pol-who-tabs"></div></div>
+        <div class="grid-3" id="pol-who"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><div><h2 data-i18n="pol.paths">Evolución</h2>
+          <p data-i18n="pol.paths.sub">Gris: sin la medida. Naranja: con la medida. Bandas: rango 10–90 % de las simulaciones.</p></div></div>
+        <div class="grid-3" id="pol-charts"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><div><h2 data-i18n="pol.conf">¿Cuánto fiarse?</h2>
+          <p data-i18n="pol.conf.sub">Cada resultado depende de supuestos sobre cómo reacciona la gente. Aquí está la evidencia de cada palanca, el supuesto clave y qué pasa si ese supuesto está en un extremo u otro de lo plausible.</p></div>
+          <button class="btn small" id="pol-robust" data-i18n="pol.robust">Probar los supuestos extremos</button></div>
+        <div class="card card-pad" id="pol-conf"></div>
+        <div class="card card-pad" id="pol-robust-out" style="margin-top:12px" hidden></div>
+        <div class="card card-pad" id="pol-sobol" style="margin-top:12px" hidden></div>
+      </div>
+
+      <div class="section">
+        <div class="card card-pad callout-card">
+          <h3 class="pol-h3" data-i18n="pol.limits">Lo que este laboratorio no tiene en cuenta</h3>
+          <ul class="pol-limits" id="pol-limits"></ul>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- ============================================================ COMPARAR -->

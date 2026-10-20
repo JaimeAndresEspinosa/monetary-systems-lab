@@ -317,3 +317,87 @@ select { max-width: 100%; }
   .runbar select { width: 100%; }
   .sens-bar { max-width: 62%; }
 }
+
+/* ---------- laboratorio de políticas */
+.pol-h3 { font-size: 15px; margin-bottom: 6px; }
+.pol-h4 { font-size: 13.5px; margin-bottom: 8px; }
+.pol-small { font-size: 12.5px; }
+.pol-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.pol-preset {
+  text-align: left; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 4px;
+  font: 13px/1.4 var(--sans); color: var(--text); border-top: 3px solid transparent;
+}
+.pol-preset span { font-size: 11.5px; color: var(--muted); }
+.pol-preset:hover { border-color: var(--muted); }
+.pol-preset.on { border-color: var(--accent); background: var(--accent-soft); }
+.pol-info { margin-top: 12px; }
+.pol-info p { color: var(--text-2); font-size: 13.5px; }
+.pol-ev h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 4px 0; }
+.pol-levers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.pol-group h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+.lever { padding: 12px 0; border-top: 1px dashed var(--border); }
+.lever:first-of-type { border-top: 0; }
+.lever.sub { padding-left: 14px; border-left: 2px solid var(--border); margin-left: 2px; }
+.lever.changed .lever-label { color: var(--accent); }
+.lever-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.lever-label { font-weight: 600; font-size: 13px; }
+.lever-ctl { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.lever-ctl output { font: 600 13px var(--mono); min-width: 74px; text-align: right; }
+.lever-ctl select { flex: 1; }
+.range-wrap { position: relative; flex: 1; display: flex; }
+.range-wrap input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+.range-wrap .tick { position: absolute; top: -5px; width: 2px; height: 8px; background: var(--text-2); border-radius: 1px; pointer-events: none; transform: translateX(-1px); }
+.lever-today { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+.linkbtn { border: 0; background: none; color: var(--accent); font: inherit; padding: 0; cursor: pointer; }
+.linkbtn:hover { text-decoration: underline; }
+.lever-more { margin-top: 6px; }
+.lever-more summary { cursor: pointer; font-size: 12px; color: var(--text-2); }
+.lever-more p { font-size: 12.5px; color: var(--text-2); margin: 8px 0 0; }
+.ela { margin-top: 10px; padding: 10px; background: var(--surface-2); border-radius: 8px; }
+.ela input { width: 110px; min-width: 0; }
+.conf { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px; white-space: nowrap; border: 1px solid; }
+.conf-alta { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); background: var(--good-soft); }
+.conf-media { color: #b7791f; border-color: color-mix(in srgb, #d69e2e 45%, transparent); background: rgba(214, 158, 46, .12); }
+.conf-baja { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); background: var(--bad-soft); }
+.pol-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 14px; margin-top: 12px; }
+.pol-form input, .pol-form select { width: 100%; min-width: 0; }
+.pol-tradeoffs p { margin: 6px 0; font-size: 14px; }
+.tw { display: inline-block; min-width: 66px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px; border-radius: 6px; margin-right: 6px; text-align: center; }
+.tw.win { background: color-mix(in srgb, var(--pos) 16%, transparent); color: var(--pos); }
+.tw.lose { background: color-mix(in srgb, var(--neg) 16%, transparent); color: var(--neg); }
+.tw.neutral { background: var(--surface-2); color: var(--text-2); }
+.pol-neutral { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 8px 12px; border-radius: 0 8px 8px 0; color: var(--text); }
+.pol-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pol-kpis .v { font-size: 21px; }
+.pol-me { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.me-card { padding: 14px 16px; }
+.me-card h4 { font-size: 13px; margin-bottom: 8px; }
+.me-row { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; align-items: baseline; padding: 3px 0; font-size: 12.5px; color: var(--text-2); }
+.me-row b { font: 600 15px var(--mono); color: var(--text); text-align: right; }
+.me-row i { grid-column: 1 / -1; font-style: normal; font: 11px var(--mono); color: var(--muted); text-align: right; margin-top: -2px; }
+.me-row.d { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 6px; }
+.me-row.d b { color: var(--accent); }
+.me-card .pol-small { margin: 8px 0 0; }
+.rb-row { display: grid; grid-template-columns: 112px 1fr 68px; align-items: center; gap: 8px; font-size: 12.5px; margin: 5px 0; }
+.rb-row > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb { position: relative; height: 16px; }
+.rb-zero { position: absolute; left: 50%; top: -3px; bottom: -3px; border-left: 1px solid var(--muted); opacity: .6; }
+.rb-bar { position: absolute; top: 2px; height: 12px; border-radius: 3px; opacity: .85; }
+.rb-bar.up { background: var(--pos); }
+.rb-bar.down { background: var(--neg); }
+.rb-band { position: absolute; top: 7px; height: 2px; background: var(--text); opacity: .55; border-radius: 1px; }
+.rb-row .val { text-align: right; font: 12px var(--mono); }
+.pol-evidence p { font-size: 13px; color: var(--text-2); margin: 10px 0 0; }
+.pol-table td:nth-child(2) { font-family: var(--sans); }
+.pol-limits { margin: 6px 0 0; padding-left: 18px; }
+.pol-limits li { color: var(--text-2); font-size: 13.5px; margin: 5px 0; }
+@media (max-width: 1100px) {
+  .pol-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pol-levers, .pol-me { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pol-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .pol-presets, .pol-levers, .pol-me, .pol-form { grid-template-columns: 1fr; }
+  .rb-row { grid-template-columns: 92px 1fr 60px; }
+}
+.pol-levers > *, .pol-me > *, .pol-presets > * { min-width: 0; }
